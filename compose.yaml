@@ -4,7 +4,11 @@ services:
   hermes:
     image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
     restart: unless-stopped
-    command: gateway run --no-supervise
+    command: gateway run
+    environment:
+      HERMES_DASHBOARD: "1"
+    ports:
+      - "${HERMES_DASHBOARD_BIND:-0.0.0.0}:9119:9119"
     stop_grace_period: 60s
     logging:
       driver: local

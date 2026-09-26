@@ -164,7 +164,19 @@ def sync_secrets():
         raise ValueError('Invalid TELEGRAM_BOT_TOKEN in Bedrock/Hermes.')
     if not re.fullmatch(r'[1-9][0-9]*', chat):
         raise ValueError('TELEGRAM_CHAT_ID must be your positive private Telegram user/chat ID.')
-    content = f'TELEGRAM_BOT_TOKEN={token}\nTELEGRAM_ALLOWED_USERS={chat}\nTELEGRAM_HOME_CHANNEL={chat}\n'
+    username = fields.get('HERMES_DASHBOARD_BASIC_AUTH_USERNAME', '')
+    password = fields.get('HERMES_DASHBOARD_BASIC_AUTH_PASSWORD', '')
+    secret = fields.get('HERMES_DASHBOARD_BASIC_AUTH_SECRET', '')
+    if not re.fullmatch(r'[A-Za-z0-9_.@-]+', username):
+        raise ValueError('Set HERMES_DASHBOARD_BASIC_AUTH_USERNAME in Bedrock/Hermes.')
+    if len(password) < 16 or '\n' in password or '\r' in password:
+        raise ValueError('HERMES_DASHBOARD_BASIC_AUTH_PASSWORD must contain at least 16 characters on one line.')
+    if len(secret) < 32 or '\n' in secret or '\r' in secret:
+        raise ValueError('HERMES_DASHBOARD_BASIC_AUTH_SECRET must contain at least 32 characters on one line.')
+    content = (f'TELEGRAM_BOT_TOKEN={token}\nTELEGRAM_ALLOWED_USERS={chat}\nTELEGRAM_HOME_CHANNEL={chat}\n'
+               f'HERMES_DASHBOARD_BASIC_AUTH_USERNAME={username}\n'
+               f'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD={password}\n'
+               f'HERMES_DASHBOARD_BASIC_AUTH_SECRET={secret}\n')
     fd, name = tempfile.mkstemp()
     try:
         with os.fdopen(fd, 'w') as stream:

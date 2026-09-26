@@ -165,3 +165,10 @@ class ProvisionTests(unittest.TestCase):
         with patch.object(provision, 'op', return_value=json.dumps(item)):
             with self.assertRaisesRegex(ValueError, 'positive'):
                 provision.sync_secrets()
+
+    def test_dashboard_credentials_required_before_sync(self):
+        item = {'fields': [{'label': 'TELEGRAM_BOT_TOKEN', 'value': '123:abc'},
+                           {'label': 'TELEGRAM_CHAT_ID', 'value': '123'}]}
+        with patch.object(provision, 'op', return_value=json.dumps(item)):
+            with self.assertRaisesRegex(ValueError, 'HERMES_DASHBOARD_BASIC_AUTH_USERNAME'):
+                provision.sync_secrets()

@@ -1,6 +1,6 @@
 # Personal Hermes server
 
-Hermes on Debian 13, running in Docker and accessed through Telegram. Telegram uses outbound long polling; no domain or public application port is required. Systemd schedules encrypted Google Drive backups, container updates, and health checks.
+Hermes on Debian 13, running in Docker and accessed through Telegram and its web dashboard. Telegram uses outbound long polling; the dashboard listens on port 9119 for devices on the trusted local network. Systemd schedules encrypted Google Drive backups, container updates, and health checks.
 
 ## Requirements
 
@@ -17,6 +17,9 @@ Create a **Bedrock** vault containing a **Hermes** item with these fields:
 | --- | --- | --- |
 | `TELEGRAM_BOT_TOKEN` | Password | BotFather token |
 | `TELEGRAM_CHAT_ID` | Text | Personal Telegram user/chat ID, a positive integer |
+| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` | Text | Dashboard login name |
+| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD` | Password | Unique password of at least 16 characters |
+| `HERMES_DASHBOARD_BASIC_AUTH_SECRET` | Password | Stable session signing secret of at least 32 characters; generate with `openssl rand -hex 32` |
 
 Create a service account with **read and write access to Bedrock only**. Store a recovery copy of its token in a personal vault.
 
@@ -83,6 +86,14 @@ systemctl list-timers 'hermes-*'
 ```
 
 The health check verifies the gateway process and disk usage. A Telegram conversation is required to verify the complete bot and model path.
+
+### Dashboard and remote backend
+
+The Hermes dashboard starts with the gateway and publishes port 9119 on the server's interfaces. From another device on the same local network, open `http://<server LAN address>:9119` and sign in with the dashboard credentials from 1Password. In Hermes Desktop, set **Settings → Gateways → Remote gateway → Remote URL** to that same address, sign in, then save and reconnect. No SSH tunnel is needed.
+
+The server does not need its LAN address in the configuration. Docker listens on `0.0.0.0`; only the browser or Hermes Desktop needs the server's address. Restrict port 9119 to the trusted LAN or VPN with the host/network firewall. To bind Docker to a specific interface instead, set `HERMES_DASHBOARD_BIND=<interface address>` in `/opt/hermes-home/.env` and reapply the installation. Do not publish the password-protected dashboard directly to the public internet; Hermes recommends OAuth for that deployment.
+
+Check the authentication gate with `curl -s http://127.0.0.1:9119/api/status`: `auth_required` should be `true` and `auth_providers` should include `basic`.
 
 ## Encrypted backups and restore
 
