@@ -1,0 +1,10 @@
+[Unit]
+Description=Telegram alert for failed Hermes unit %i
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/hermes-home
+EnvironmentFile=-/opt/hermes-home/ops.env
+ExecStart=/usr/bin/just alert %i
+UMask=0077
+TimeoutStartSec=3min

@@ -1,0 +1,21 @@
+name: Verify deployment scripts
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y rclone shellcheck
+      - name: Validate scripts and recovery workflows
+        run: bash scripts/verify.sh
+      - name: Validate systemd units
+        run: |
+          mkdir -p /tmp/bedrock-units
+          cp systemd/* /tmp/bedrock-units/
+          sed -i 's|ExecStart=/usr/bin/just.*|ExecStart=/usr/bin/true|' /tmp/bedrock-units/*.service
+          systemd-analyze verify /tmp/bedrock-units/*

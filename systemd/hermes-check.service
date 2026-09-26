@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Hermes gateway and backup freshness
+After=docker.service
+OnFailure=hermes-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/hermes-home
+ExecStart=/usr/bin/just monitor
+UMask=0077
+TimeoutStartSec=70min

@@ -1,0 +1,13 @@
+[Unit]
+Description=Back up and update Hermes
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+OnFailure=hermes-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/hermes-home
+ExecStart=/usr/bin/just update
+UMask=0077
+TimeoutStartSec=8h

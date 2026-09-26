@@ -1,0 +1,9 @@
+.env
+data/
+backups/
+*.tar.zst
+ops.env
+__pycache__/
+*.zip
+*.conf
+*.pending

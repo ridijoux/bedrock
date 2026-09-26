@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Hermes every fifteen minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target

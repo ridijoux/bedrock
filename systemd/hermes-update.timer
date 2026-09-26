@@ -1,0 +1,11 @@
+[Unit]
+Description=Controlled weekly update
+
+[Timer]
+OnCalendar=Sat *-*-* 04:15:00
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target
+
