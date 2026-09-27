@@ -7,7 +7,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export RCLONE_CONFIG=/root/.config/rclone/rclone.conf
 export RCLONE_RETRIES=5 RCLONE_CONTIMEOUT=20s RCLONE_TIMEOUT=5m
 export COMPOSE_FILE="$PWD/compose.yaml"
-export COMPOSE_ENV_FILES=/opt/hermes-home/.env
+if [[ -f "$PWD/.env" ]]; then
+  export COMPOSE_ENV_FILES="$PWD/.env"
+elif [[ -f /opt/hermes-home/.env ]]; then
+  export COMPOSE_ENV_FILES=/opt/hermes-home/.env
+else
+  unset COMPOSE_ENV_FILES
+fi
 export HERMES_DATA_DIR=${HERMES_DATA_DIR:-/opt/hermes-home/data/hermes}
 if [[ -s /etc/bedrock/image.env ]]; then
   export HERMES_IMAGE
