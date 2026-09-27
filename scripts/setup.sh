@@ -3,7 +3,7 @@ source "$(dirname "$0")/common.sh"
 lock
 prepare_data
 docker compose config --quiet
-if [[ -f /etc/bedrock/setup-complete && -f data/hermes/config.yaml ]]; then
+if [[ -f /etc/bedrock/setup-complete && -f $HERMES_DATA_DIR/config.yaml ]]; then
   # Reapplying installation uses the same backup/rollback path as maintenance.
   docker compose up -d --pull never --wait --wait-timeout 240 hermes
   ./scripts/update.sh

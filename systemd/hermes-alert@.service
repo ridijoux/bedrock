@@ -3,7 +3,7 @@ Description=Telegram alert for failed Hermes unit %i
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/hermes-home
+WorkingDirectory=/opt/hermes-home/git/bedrock
 EnvironmentFile=-/opt/hermes-home/ops.env
 ExecStart=/usr/bin/just alert %i
 UMask=0077

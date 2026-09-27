@@ -5,10 +5,10 @@ if [[ $EUID -ne 0 ]]; then
   if command -v sudo >/dev/null; then
     exec sudo bash scripts/install.sh "$@"
   fi
-  echo 'sudo is not installed. Run su -, then cd /opt/hermes-home and bash scripts/install.sh.' >&2
+  echo 'sudo is not installed. Run su -, then cd /opt/hermes-home/git/bedrock and bash scripts/install.sh.' >&2
   exit 1
 fi
-[[ $PWD == /opt/hermes-home ]] || { echo 'Move the checkout to /opt/hermes-home first.' >&2; exit 1; }
+[[ $PWD == /opt/hermes-home/git/bedrock ]] || { echo 'Move the checkout to /opt/hermes-home/git/bedrock first.' >&2; exit 1; }
 [[ $# -eq 0 || ( $# -le 2 && $1 == --restore ) ]] || { echo 'Usage: install.sh [--restore [archive|latest]]' >&2; exit 1; }
 source scripts/common.sh
 lock

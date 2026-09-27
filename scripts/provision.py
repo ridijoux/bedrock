@@ -181,10 +181,10 @@ def sync_secrets():
     try:
         with os.fdopen(fd, 'w') as stream:
             stream.write(content)
-        run(['python3', str(ROOT / 'scripts/merge-env.py'), name, str(ROOT / 'data/hermes/.env')])
+        run(['python3', str(ROOT / 'scripts/merge-env.py'), name, '/opt/hermes-home/data/hermes/.env'])
     finally:
         os.unlink(name)
-    atomic(ROOT / 'ops.env', f'TELEGRAM_BOT_TOKEN={token}\nTELEGRAM_CHAT_ID={chat}\n')
+    atomic(Path('/opt/hermes-home/ops.env'), f'TELEGRAM_BOT_TOKEN={token}\nTELEGRAM_CHAT_ID={chat}\n')
     print('Telegram credentials and private user allowlist synchronized.')
 
 

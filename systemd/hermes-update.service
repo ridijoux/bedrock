@@ -7,7 +7,7 @@ OnFailure=hermes-alert@%n.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/hermes-home
+WorkingDirectory=/opt/hermes-home/git/bedrock
 ExecStart=/usr/bin/just update
 UMask=0077
 TimeoutStartSec=8h

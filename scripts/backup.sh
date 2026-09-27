@@ -5,7 +5,7 @@ require_backup_config
 ./scripts/check.sh
 prepare_data
 archive="hermes-backup-$(date -u +%Y%m%dT%H%M%SZ)-$$.zip"
-local_archive="data/hermes/backups/$archive"
+local_archive="$HERMES_DATA_DIR/backups/$archive"
 verified=false
 cleanup() {
   if $verified; then rm -f "$local_archive"; else echo "Backup did not complete; local archive retained if present: $local_archive" >&2; fi

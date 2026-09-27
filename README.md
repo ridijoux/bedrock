@@ -42,15 +42,16 @@ git clone git@github.com:ridijoux/bedrock.git
 su -
 ```
 
-In the root session, move the checkout to its required location and install. Adjust the source path to match the checkout:
+In the root session, place the checkout under `git/` and install. Adjust the source path to match the checkout:
 
 ```bash
-mv /home/user/bedrock /opt/hermes-home
-cd /opt/hermes-home
+mkdir -p /opt/hermes-home/git
+mv /home/user/bedrock /opt/hermes-home/git/bedrock
+cd /opt/hermes-home/git/bedrock
 bash scripts/install.sh
 ```
 
-The checkout retains its original ownership for subsequent `git pull` operations. For an existing installation, run the installer from `/opt/hermes-home`.
+The checkout retains its original ownership for subsequent `git pull` operations. Hermes state stays in `/opt/hermes-home/data/hermes`; the checkout is under `/opt/hermes-home/git/bedrock`. On an existing server, leave `data/`, `.env`, and `ops.env` where they are. Place a checkout in `git/bedrock` and run the installer there; it will reapply the systemd units with the new checkout path.
 
 The installer installs dependencies, provisions secrets and backup storage, configures Hermes, verifies an initial backup, and enables the maintenance timers. Interactive steps are:
 
@@ -74,7 +75,7 @@ Start a new login session to apply group membership. Administrative commands can
 
 ## Operations
 
-Run these commands as root from `/opt/hermes-home`, or prefix them with `sudo`:
+Run these commands as root from `/opt/hermes-home/git/bedrock`, or prefix them with `sudo`:
 
 ```bash
 just status
@@ -106,7 +107,7 @@ Each backup:
 3. Uploads the archive, reads it back through the decrypting remote, and compares SHA-256 hashes.
 4. Saves refreshed Drive credentials to 1Password and removes remote archives older than 14 days.
 
-Successful local archives are removed. Failed local archives remain in `data/hermes/backups/`; failed verification prevents remote retention cleanup.
+Successful local archives are removed. Failed local archives remain in `/opt/hermes-home/data/hermes/backups/`; failed verification prevents remote retention cleanup.
 
 To restore on the current server:
 
@@ -128,10 +129,10 @@ Pre-restore snapshots are retained until removed manually.
 
 ### Replacement server
 
-Clone the repository and install it at `/opt/hermes-home`, then run as root:
+Clone the repository and install it at `/opt/hermes-home/git/bedrock`, then run as root:
 
 ```bash
-cd /opt/hermes-home
+cd /opt/hermes-home/git/bedrock
 bash scripts/install.sh --restore
 # Or: bash scripts/install.sh --restore ARCHIVE.zip
 ```
@@ -172,14 +173,14 @@ Use `just secrets-sync` to apply Telegram field changes immediately, or `just up
 As the checkout owner:
 
 ```bash
-cd /opt/hermes-home
+cd /opt/hermes-home/git/bedrock
 git pull --ff-only
 ```
 
 Then as root:
 
 ```bash
-cd /opt/hermes-home
+cd /opt/hermes-home/git/bedrock
 bash scripts/install.sh
 ```
 

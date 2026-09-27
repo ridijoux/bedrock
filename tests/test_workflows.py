@@ -69,6 +69,7 @@ cd "$TEST_ROOT"
 lock() { :; }
 require_backup_config() { :; }
 prepare_data() { mkdir -p data/hermes/backups; }
+HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
 ''')
         (scripts / 'check.sh').write_text('#!/bin/bash\nexit 0\n')
         (scripts / 'secrets-sync.sh').write_text('#!/bin/bash\nexit 0\n')
