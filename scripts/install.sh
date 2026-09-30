@@ -22,6 +22,13 @@ if [[ ${1:-} == --restore ]]; then
     docker compose pull hermes
   fi
   ./scripts/restore.sh "${2:-latest}"
+  docker compose pull gatelet
+  docker compose up -d --wait --wait-timeout 240 gatelet
+  # Recover the most recent Gatelet snapshot before the installer's first
+  # combined backup. Otherwise a new, empty Gatelet DB could become "latest".
+  if [[ -n $(rclone lsf 'hermes-crypt:daily' --files-only --include '/gatelet-backup-*.zip') ]]; then
+    ./scripts/restore-gatelet.sh latest
+  fi
 else
   python3 scripts/provision.py sync-secrets
   python3 scripts/provision.py setup-backup
@@ -30,4 +37,4 @@ fi
 ./scripts/secrets-sync.sh
 ./scripts/backup.sh
 ./scripts/install-timers.sh
-echo 'Installation complete: Hermes is healthy, backup verified, timers enabled.'
+echo 'Installation complete: Hermes and Gatelet started, backup verified, timers enabled.'

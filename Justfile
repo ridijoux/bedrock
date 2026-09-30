@@ -13,6 +13,24 @@ stop:
 status:
     ./scripts/compose.sh status
 
+gatelet-start:
+    ./scripts/compose.sh gatelet-start
+
+gatelet-stop:
+    ./scripts/compose.sh gatelet-stop
+
+gatelet-logs:
+    ./scripts/compose.sh gatelet-logs
+
+gatelet-check:
+    ./scripts/compose.sh gatelet-check
+
+gatelet-backup-list:
+    ./scripts/compose.sh gatelet-backup-list
+
+gatelet-restore archive="latest":
+    ./scripts/restore-gatelet.sh {{quote(archive)}}
+
 logs:
     ./scripts/compose.sh logs
 

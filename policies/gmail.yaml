@@ -1,0 +1,45 @@
+# Replace the account placeholder in Gatelet's per-connection policy editor.
+# Gmail move always removes INBOX (archives the message), so it is disabled.
+provider: google_gmail
+account: "YOUR_GMAIL_ADDRESS"
+operations:
+  search:
+    allow: true
+    mutations:
+      - field: maxResults
+        action: cap
+        value: 50
+    guards:
+      block_subjects: [password reset, verification code, security code, two-factor, 2FA, one-time password, OTP]
+      block_sender_domains: [accounts.google.com, accountprotection.microsoft.com]
+  read_message:
+    allow: true
+    guards:
+      block_subjects: [password reset, verification code, security code, two-factor, 2FA, one-time password, OTP]
+      block_sender_domains: [accounts.google.com, accountprotection.microsoft.com]
+  create_draft:
+    allow: true
+    constraints:
+      - field: to
+        rule: must_not_be_empty
+      - field: subject
+        rule: must_not_be_empty
+    mutations:
+      - field: cc
+        action: delete
+      - field: bcc
+        action: delete
+  list_drafts:
+    allow: true
+  list_labels:
+    allow: true
+  send:
+    allow: false
+  reply:
+    allow: false # Replies send immediately; draft a reply instead.
+  archive:
+    allow: false
+  move:
+    allow: false # See comment above: cannot allow and prohibit archiving.
+  label:
+    allow: false # Otherwise removeLabelIds: [INBOX] is an archive bypass.

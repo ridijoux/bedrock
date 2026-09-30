@@ -18,6 +18,9 @@ services:
     volumes:
       - /opt/hermes-home/data/hermes:/opt/data
       - ./scripts/container-health.py:/opt/bedrock-health.py:ro
+    networks:
+      - default
+      - gatelet-agent
     healthcheck:
       test: ["CMD", "python3", "/opt/bedrock-health.py"]
       interval: 30s
@@ -29,3 +32,25 @@ services:
         limits:
           memory: 4G
           cpus: "2.0"
+
+  gatelet:
+    image: ${GATELET_IMAGE:-ghcr.io/hannesill/gatelet:0.2.4}
+    restart: unless-stopped
+    environment:
+      GATELET_DATA_DIR: /data
+    ports:
+      - "127.0.0.1:4001:4001" # Admin only; reach remotely with SSH forwarding.
+    volumes:
+      - /opt/hermes-home/data/gatelet:/data
+    networks:
+      - gatelet-agent
+      - default # Outbound OAuth/provider API access.
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  gatelet-agent:
+    internal: true
