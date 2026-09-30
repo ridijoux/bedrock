@@ -88,6 +88,8 @@ systemctl list-timers 'hermes-*'
 
 The health check verifies the gateway process and disk usage. A Telegram conversation is required to verify the complete bot and model path.
 
+`just check` only checks that the container is healthy and disk usage is below 90%; it does **not** check backup freshness or whether the host needs a reboot. For the full scheduled-monitor checks, run `just monitor` as root: it also requires a verified backup from the last 36 hours and reports pending reboots. Neither command replaces sending a test message to the Telegram bot to verify the end-to-end path.
+
 ### Dashboard and remote backend
 
 The Hermes dashboard starts with the gateway and publishes port 9119 on the server's interfaces. From another device on the same local network, open `http://<server LAN address>:9119` and sign in with the dashboard credentials from 1Password. In Hermes Desktop, set **Settings → Gateways → Remote gateway → Remote URL** to that same address, sign in, then save and reconnect. No SSH tunnel is needed.
@@ -202,4 +204,3 @@ bash scripts/verify.sh
 Tests cover provisioning, backup, restore, and update failures using simulated external services. A local encryption round trip also runs when rclone is available. See [AUDIT.md](AUDIT.md) for validation results and limitations.
 
 References: [Docker on Debian](https://docs.docker.com/engine/install/debian/), [rclone remote setup](https://rclone.org/remote_setup/), [rclone crypt](https://rclone.org/crypt/), [1Password documents](https://www.1password.dev/cli/reference/management-commands/document), [Hermes CLI](https://hermes-agent.nousresearch.com/docs/reference/cli-commands).
-# bedrock
