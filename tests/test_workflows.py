@@ -1,6 +1,8 @@
 """Exercise production shell control flow with isolated Docker/Drive substitutes."""
 import os
+import json
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -23,6 +25,14 @@ if name == 'jq':
     data = json.load(sys.stdin)
     sys.exit(0 if len(data) == 1 and data[0]['State']['Health']['Status'] == 'healthy' else 1)
 if name == 'docker':
+    if args[:3] == ['compose', 'exec', '-T'] and mode == 'missing-hermes-path':
+        command = args[4:]
+        if (command[:2] != ['/bin/sh', '-c'] or
+            not all(location in command[2] for location in
+                    ['/opt/hermes/bin', '/opt/hermes/.venv/bin', '/opt/data/.local/bin']) or
+            'exec hermes "$@"' not in command[2]):
+            print('OCI runtime exec failed: exec: "hermes": executable file not found in $PATH', file=sys.stderr)
+            sys.exit(127)
     if args[0] == 'inspect':
         print('sha256:previous' if '--format' in args else json.dumps([{'State': {'Status': 'running', 'Health': {'Status': 'healthy'}}}]))
     elif 'ps' in args:
@@ -119,6 +129,33 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
         self.assertTrue((self.root / 'state/last-backup').exists())
         self.assertFalse(list((self.root / 'data/hermes/backups').glob('*.zip')))
         self.assertEqual(len(list((self.root / 'remote/daily').glob('gatelet-backup-*.zip'))), 1)
+
+    def test_backup_on_old_container_with_hermes_missing_from_path(self):
+        result = self.run_script('backup.sh', 'missing-hermes-path')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / 'state/last-backup').exists())
+
+    def test_backup_shell_wrapper_executes_with_exact_arguments(self):
+        source = (ROOT / 'scripts/backup.sh').read_text()
+        match = re.search(r"docker compose exec -T hermes /bin/sh -c '([^']+)' -- backup", source, re.S)
+        assert match is not None, 'Backup must invoke the shell wrapper'
+        binary_dir = self.root / 'legacy-bin'
+        binary_dir.mkdir()
+        hermes = binary_dir / 'hermes'
+        hermes.write_text('''#!/usr/bin/env python3
+import json, os, pathlib, sys
+pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.argv[1:]))
+''')
+        hermes.chmod(0o755)
+        # This is the CLI's sole location; /bin/sh starts with a PATH that
+        # deliberately does not include it, as on the affected container.
+        wrapper = match.group(1).replace('/opt/hermes/bin', str(binary_dir))
+        result = subprocess.run(['/bin/sh', '-c', wrapper, '--', 'backup', '--output',
+                                 '/opt/data/backups/sample.zip', '--keep', '0'],
+                                env={**self.env, 'PATH': '/usr/bin:/bin'}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((self.root / 'hermes-args').read_text()),
+                         ['backup', '--output', '/opt/data/backups/sample.zip', '--keep', '0'])
 
     def test_missing_gatelet_token_prevents_prune_and_freshness_marker(self):
         (self.root / 'data/gatelet/admin.token').unlink()

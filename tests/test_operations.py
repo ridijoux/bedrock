@@ -11,10 +11,15 @@ JUST = shutil.which('just')
 
 
 class OperationsContracts(unittest.TestCase):
-    def test_compose_preserves_upstream_hermes_path(self):
+    def test_compose_resolves_hermes_from_current_and_legacy_images(self):
         compose = (ROOT / 'compose.yaml').read_text()
         hermes = compose.split('  hermes:', 1)[1].split('  gatelet:', 1)[0]
-        self.assertNotIn('      PATH:', hermes)
+        path_line = next((line for line in hermes.splitlines() if line.strip().startswith('PATH:')), '')
+        self.assertTrue(path_line, 'Hermes exec needs an explicit PATH for legacy images')
+        locations = path_line.split('PATH:', 1)[1].strip().strip('"').split(':')
+        self.assertEqual(locations[:3], ['/opt/hermes/bin', '/opt/hermes/.venv/bin', '/opt/data/.local/bin'])
+        self.assertIn('/usr/bin', locations)
+        self.assertIn('/bin', locations)
 
     @unittest.skipUnless(JUST, 'just binary not available')
     def test_just_recipes_are_grouped_and_exposed(self):

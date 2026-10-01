@@ -13,7 +13,14 @@ cleanup() {
   if $verified; then rm -f "$local_archive"; else echo "Backup did not complete; local archive retained if present: $local_archive" >&2; fi
 }
 trap cleanup EXIT
-docker compose exec -T hermes hermes backup --output "/opt/data/backups/$archive" --keep 0
+# Before the image update, `exec` still runs in the *existing* container;
+# changing Compose PATH does not affect it until a recreate. Old images may
+# have Hermes only in the user-local bin, whereas new ones use the shim/venv.
+docker compose exec -T hermes /bin/sh -c '
+  PATH="/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:$PATH"
+  export PATH
+  exec hermes "$@"
+' -- backup --output "/opt/data/backups/$archive" --keep 0
 [[ -s $local_archive ]] || { echo 'Hermes did not create a backup archive.' >&2; exit 1; }
 chmod 0600 "$local_archive"
 python3 scripts/validate-archive.py "$local_archive"

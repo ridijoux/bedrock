@@ -7,6 +7,9 @@ services:
     command: gateway run
     environment:
       HERMES_DASHBOARD: "1"
+      # Older deployed images may lack these locations in their image PATH.
+      # Keep the current image shim first, then venv and legacy user CLIs.
+      PATH: "/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"
     ports:
       - "${HERMES_DASHBOARD_BIND:-0.0.0.0}:9119:9119"
     stop_grace_period: 60s
