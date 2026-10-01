@@ -1,6 +1,6 @@
 # Personal Hermes server
 
-Hermes on Debian 13, running in Docker and accessed through Telegram and its web dashboard. Telegram uses outbound long polling; the dashboard listens on port 9119 for devices on the trusted local network. Systemd schedules encrypted Google Drive backups, container updates, and health checks.
+Hermes on Debian 13, running in Docker and accessed through Telegram and its web dashboard. Telegram uses outbound long polling; the dashboard listens on port 9119 for devices on the trusted local network. Systemd schedules encrypted Google Drive backups, container updates, and health checks. Gatelet is an optional-to-configure mail MCP proxy started as a separate container; see [Gatelet setup and security limitations](docs/gatelet.md) before connecting mail.
 
 ## Requirements
 
@@ -83,6 +83,8 @@ just check
 just logs
 just backup
 just backup-list
+just gatelet-check
+just gatelet-backup-list
 systemctl list-timers 'hermes-*'
 ```
 
@@ -107,9 +109,10 @@ Each backup:
 1. Creates a live SQLite snapshot with `hermes backup` and validates the ZIP.
 2. Verifies the recovery configuration in 1Password.
 3. Uploads the archive, reads it back through the decrypting remote, and compares SHA-256 hashes.
-4. Saves refreshed Drive credentials to 1Password and removes remote archives older than 14 days.
+4. Also snapshots Gatelet's SQLite database and admin token into a separate encrypted archive, with full remote read-back and SHA-256 comparison.
+5. Saves refreshed Drive credentials to 1Password and removes remote archives older than 14 days.
 
-Successful local archives are removed. Failed local archives remain in `/opt/hermes-home/data/hermes/backups/`; failed verification prevents remote retention cleanup.
+Successful local archives are removed. Failed local archives remain in `/opt/hermes-home/data/hermes/backups/`; failed verification prevents remote retention cleanup. The Gatelet archive includes both OAuth tokens and the key material needed to decrypt them; keep decrypted archives private. See [Gatelet recovery](docs/gatelet.md#operations-and-recovery) for the separate restore command.
 
 To restore on the current server:
 
@@ -139,7 +142,7 @@ bash scripts/install.sh --restore
 # Or: bash scripts/install.sh --restore ARCHIVE.zip
 ```
 
-This installs the host dependencies, retrieves `rclone.conf` from 1Password, restores Hermes, and enables maintenance after a verified backup. Recovery skips the Hermes setup wizard and refuses to generate new keys if the recovery document is missing.
+This installs the host dependencies, retrieves `rclone.conf` from 1Password, restores Hermes and the latest available Gatelet snapshot, and enables maintenance after a verified backup. Recovery skips the Hermes setup wizard and refuses to generate new keys if the recovery document is missing. If Gatelet has no prior backup, a fresh empty instance starts; see [Gatelet recovery](docs/gatelet.md#operations-and-recovery) to choose another snapshot.
 
 Hermes OAuth credentials are included in the archive. Revoked credentials require authorization again:
 
@@ -166,7 +169,7 @@ Schedules use the server's local time.
 
 A shared lock serializes installation and maintenance operations. Service failures trigger Telegram alerts. Docker logs are limited to three 10 MB files. Debian security updates are enabled; host reboots remain an operator action.
 
-If a new image fails startup checks, the update script restarts the previous image and reports failure to systemd. The selected image is persisted in `/etc/bedrock/image.env`, which is also used by `just start`. Image rollback does not undo data migrations; the preceding backup is available on Drive. Process health checks cannot detect every functional regression in `latest`.
+If a new Hermes image fails startup checks, the update script restarts the previous image and reports failure to systemd. The selected image is persisted in `/etc/bedrock/image.env`, which is also used by `just start`. Image rollback does not undo data migrations; the preceding backup is available on Drive. Gatelet is version-pinned and is not upgraded by this timer. Process health checks cannot detect every functional regression in `latest`.
 
 Use `just secrets-sync` to apply Telegram field changes immediately, or `just update` to update the container.
 

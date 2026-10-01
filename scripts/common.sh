@@ -30,6 +30,7 @@ lock() {
 prepare_data() {
   install -d -m 0700 /opt/hermes-home /opt/hermes-home/data
   install -d -m 0700 -o 10000 -g 10000 "$HERMES_DATA_DIR" "$HERMES_DATA_DIR/backups"
+  install -d -m 0700 /opt/hermes-home/data/gatelet
 }
 require_backup_config() {
   python3 scripts/provision.py validate-backup

@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -18,9 +19,12 @@ with (root / 'calls').open('a') as stream:
 mode = os.environ.get('FAIL_MODE', '')
 if name == 'chown':
     sys.exit(0)
+if name == 'jq':
+    data = json.load(sys.stdin)
+    sys.exit(0 if len(data) == 1 and data[0]['State']['Health']['Status'] == 'healthy' else 1)
 if name == 'docker':
     if args[0] == 'inspect':
-        print('sha256:previous')
+        print('sha256:previous' if '--format' in args else json.dumps([{'State': {'Status': 'running', 'Health': {'Status': 'healthy'}}}]))
     elif 'ps' in args:
         print('container-id')
     elif 'backup' in args:
@@ -61,7 +65,7 @@ class WorkflowTests(unittest.TestCase):
         for original in (ROOT / 'scripts').iterdir():
             if original.is_file():
                 destination = scripts / original.name
-                destination.write_text(original.read_text().replace('/etc/bedrock', str(self.root / 'state')))
+                destination.write_text(original.read_text().replace('/etc/bedrock', str(self.root / 'state')).replace('/opt/hermes-home/data/gatelet', str(self.root / 'data/gatelet')))
                 destination.chmod(0o755)
         (scripts / 'common.sh').write_text('''set -Eeuo pipefail
 umask 077
@@ -75,14 +79,20 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
         (scripts / 'secrets-sync.sh').write_text('#!/bin/bash\nexit 0\n')
         (scripts / 'install-timers.sh').write_text('#!/bin/bash\nexit 0\n')
         (scripts / 'provision.py').write_text("import os, sys\nsys.exit(1 if os.environ.get('FAIL_MODE') == 'vault' else 0)\n")
+        (scripts / 'gatelet-snapshot.py').write_text((ROOT / 'scripts/gatelet-snapshot.py').read_text())
         bindir = self.root / 'bin'
         bindir.mkdir()
-        for command in ['docker', 'rclone', 'chown']:
+        for command in ['docker', 'rclone', 'chown', 'jq']:
             binary = bindir / command
             binary.write_text(FAKE)
             binary.chmod(0o755)
         (self.root / 'state').mkdir()
         (self.root / 'remote/daily').mkdir(parents=True)
+        gatelet = self.root / 'data/gatelet'
+        gatelet.mkdir(parents=True)
+        (gatelet / 'admin.token').write_text('a' * 64)
+        with sqlite3.connect(gatelet / 'gatelet.db') as db:
+            db.execute('CREATE TABLE connections (id TEXT)')
         self.env = {**os.environ, 'TEST_ROOT': str(self.root), 'PATH': f'{bindir}:{os.environ["PATH"]}'}
 
     def run_script(self, name, mode='', *args):
@@ -108,6 +118,33 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
         self.assertLess(calls.index('"cat"'), calls.index('"delete"'))
         self.assertTrue((self.root / 'state/last-backup').exists())
         self.assertFalse(list((self.root / 'data/hermes/backups').glob('*.zip')))
+        self.assertEqual(len(list((self.root / 'remote/daily').glob('gatelet-backup-*.zip'))), 1)
+
+    def test_missing_gatelet_token_prevents_prune_and_freshness_marker(self):
+        (self.root / 'data/gatelet/admin.token').unlink()
+        result = self.run_script('backup.sh')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('"delete"', self.calls())
+        self.assertFalse((self.root / 'state/last-backup').exists())
+
+    def test_gatelet_restore_rejects_corrupt_archive_without_stopping(self):
+        name = 'gatelet-backup-20260926T000000Z-1.zip'
+        (self.root / 'remote/daily' / name).write_bytes(b'not a zip')
+        result = self.run_script('restore-gatelet.sh', '', name)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('"stop"', self.calls())
+
+    def test_gatelet_restore_keeps_local_pre_restore_snapshot(self):
+        name = 'gatelet-backup-20260926T000000Z-1.zip'
+        source = self.root / 'data/gatelet'
+        snapshot_script = self.root / 'scripts/gatelet-snapshot.py'
+        result = subprocess.run(['python3', str(snapshot_script), str(source), str(self.root / 'remote/daily' / name)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (source / 'admin.token').write_text('b' * 64)
+        result = self.run_script('restore-gatelet.sh', '', name)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((source / 'admin.token').read_text(), 'a' * 64)
+        self.assertEqual(len(list((self.root / 'data/hermes/backups').glob('pre-restore-gatelet-*.zip'))), 1)
 
     def test_backup_failure_retains_local_archive_and_never_prunes(self):
         for mode in ['upload', 'checksum', 'vault']:
@@ -172,4 +209,4 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
         result = self.run_script('setup.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('"setup"', self.calls())
-        self.assertLess(self.calls().index('"cat"'), self.calls().index('"pull"'))
+        self.assertLess(self.calls().index('"cat"'), self.calls().index('"pull", "hermes"'))

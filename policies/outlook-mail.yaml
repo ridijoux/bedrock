@@ -1,0 +1,54 @@
+# Replace the account placeholder in Gatelet's per-connection policy editor.
+# To permit other destinations, add only reviewed NON-Archive folder IDs to
+# must_be_one_of. A blacklist is insufficient: Archive also has an opaque ID.
+provider: outlook_mail
+account: "YOUR_OUTLOOK_ADDRESS"
+operations:
+  search:
+    allow: true
+    mutations:
+      - field: maxResults
+        action: cap
+        value: 50
+    guards:
+      block_subjects: [password reset, verification code, security code, two-factor, 2FA, one-time password, OTP]
+      block_sender_domains: [accountprotection.microsoft.com, account.live.com, login.microsoftonline.com]
+  read_message:
+    allow: true
+    guards:
+      block_subjects: [password reset, verification code, security code, two-factor, 2FA, one-time password, OTP]
+      block_sender_domains: [accountprotection.microsoft.com, account.live.com, login.microsoftonline.com]
+  create_draft:
+    allow: true
+    constraints:
+      - field: to
+        rule: must_not_be_empty
+      - field: subject
+        rule: must_not_be_empty
+    mutations:
+      - field: cc
+        action: delete
+      - field: bcc
+        action: delete
+  list_drafts:
+    allow: true
+  list_folders:
+    allow: true
+  move:
+    allow: true
+    constraints:
+      - field: folderId
+        rule: must_be_one_of
+        value: [Inbox] # Safe default: moving an existing message back into Inbox.
+    guards:
+      protected_folders: [deleteditems, junkemail, archive]
+  send:
+    allow: false
+  reply:
+    allow: false # Replies send immediately.
+  archive:
+    allow: false
+  categorize:
+    allow: false
+  flag:
+    allow: false
