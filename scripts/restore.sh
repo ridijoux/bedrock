@@ -27,7 +27,7 @@ if ! docker compose run --rm -T --no-deps hermes import "/opt/data/backups/resto
   exit 1
 fi
 docker compose up -d --wait --wait-timeout 240 hermes
-./scripts/check.sh
+./scripts/check.sh hermes
 install -d -m 0700 /etc/bedrock
 touch /etc/bedrock/setup-complete
 echo "Restored backup: $archive"

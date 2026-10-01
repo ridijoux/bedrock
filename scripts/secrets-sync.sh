@@ -4,7 +4,7 @@ lock
 prepare_data
 python3 scripts/provision.py sync-secrets
 if docker compose ps --status running --services | grep -Fxq hermes; then
-  docker compose restart hermes
-  docker compose up -d --wait --wait-timeout 240 hermes
-  ./scripts/check.sh
+  # Restart the existing container; `up` can recreate it with changed Compose
+  # settings before the update path has taken its verified backup.
+  ./scripts/compose.sh restart
 fi

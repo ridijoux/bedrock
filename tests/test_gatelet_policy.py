@@ -15,7 +15,7 @@ DENIED = {'send', 'reply', 'archive'}
 @unittest.skipUnless(yaml, 'install PyYAML to verify Gatelet policies')
 class MailPolicyTests(unittest.TestCase):
     def policy(self, name):
-        path = ROOT / 'policies' / name
+        path = ROOT / 'services/gatelet/policies' / name
         assert yaml is not None
         policy = yaml.safe_load(path.read_text())
         self.assertEqual(policy['account'].startswith('YOUR_'), True)

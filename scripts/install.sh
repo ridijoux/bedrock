@@ -32,9 +32,18 @@ if [[ ${1:-} == --restore ]]; then
 else
   python3 scripts/provision.py sync-secrets
   python3 scripts/provision.py setup-backup
+  # setup.sh performs a verified backup while reapplying an existing install.
+  # A fresh install still needs its first backup below.
+  if [[ -f /etc/bedrock/setup-complete && -f $HERMES_DATA_DIR/config.yaml ]]; then
+    reapply=true
+  else
+    reapply=false
+  fi
   ./scripts/setup.sh
 fi
 ./scripts/secrets-sync.sh
-./scripts/backup.sh
+if [[ ${reapply:-false} == false ]]; then
+  ./scripts/backup.sh
+fi
 ./scripts/install-timers.sh
 echo 'Installation complete: Hermes and Gatelet started, backup verified, timers enabled.'

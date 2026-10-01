@@ -4,10 +4,13 @@ lock
 prepare_data
 docker compose config --quiet
 if [[ -f /etc/bedrock/setup-complete && -f $HERMES_DATA_DIR/config.yaml ]]; then
-  # Reapplying installation uses the same backup/rollback path as maintenance.
-  docker compose pull gatelet
-  docker compose up -d --pull never --wait --wait-timeout 240 gatelet hermes
+  # Start existing containers without recreating them before the pre-update
+  # backup. A missing Gatelet can be created, but an existing one is unchanged.
+  docker compose start hermes
+  docker compose up -d --no-recreate --wait --wait-timeout 240 gatelet
   ./scripts/update.sh
+  docker compose pull gatelet
+  docker compose up -d --wait --wait-timeout 240 gatelet
   exit 0
 fi
 if [[ ${HERMES_IMAGE:-} != bedrock-hermes:rollback ]]; then
