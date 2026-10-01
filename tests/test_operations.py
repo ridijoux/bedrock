@@ -21,6 +21,17 @@ class OperationsContracts(unittest.TestCase):
         self.assertIn('/usr/bin', locations)
         self.assertIn('/bin', locations)
 
+    def test_gh_is_installed_on_host_and_available_in_hermes(self):
+        installer = (ROOT / 'scripts/install-host.sh').read_text()
+        self.assertIn('python3 debian-archive-keyring gh', installer)
+        self.assertIn('[[ -f /usr/bin/gh && -x /usr/bin/gh ]]', installer)
+        compose = (ROOT / 'compose.yaml').read_text()
+        hermes = compose.split('  hermes:', 1)[1].split('  gatelet:', 1)[0]
+        self.assertIn('source: /usr/bin/gh', hermes)
+        self.assertIn('target: /usr/local/bin/gh', hermes)
+        self.assertIn('create_host_path: false', hermes)
+        self.assertIn('/usr/local/bin', hermes.split('PATH:', 1)[1].splitlines()[0])
+
     @unittest.skipUnless(JUST, 'just binary not available')
     def test_just_recipes_are_grouped_and_exposed(self):
         recipes = subprocess.run([str(JUST), '--list'], cwd=ROOT, text=True, capture_output=True)

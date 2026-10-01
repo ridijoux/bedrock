@@ -246,6 +246,7 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
         result = self.run_script('update.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / 'state/image.env').read_text().strip(), 'nousresearch/hermes-agent:latest')
+        self.assertIn('"--force-recreate"', self.calls())
 
     def test_restart_never_backs_up_or_restores(self):
         result = self.run_script('compose.sh', '', 'restart')
@@ -281,6 +282,7 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
             self.assertEqual(set(archive.namelist()), {'gatelet.db', 'admin.token'})
         self.assertEqual((self.root / 'state/last-backup').read_text(), str(self.daily_timestamp))
         self.assertNotIn('"import"', self.calls())
+        self.assertIn('"gh", "--version"', self.calls())
 
     def test_reapplying_setup_uses_local_backup_before_update(self):
         (self.root / 'state/setup-complete').touch()

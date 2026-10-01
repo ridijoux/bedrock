@@ -19,7 +19,8 @@ esac
 [[ -d /run/systemd/system ]] || { echo 'A booted Debian host with systemd is required.' >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o Acquire::Retries=5 -o DPkg::Lock::Timeout=300 update
-apt-get -o Acquire::Retries=5 -o DPkg::Lock::Timeout=300 install -y ca-certificates curl git gnupg just rclone jq util-linux unattended-upgrades python3 debian-archive-keyring
+apt-get -o Acquire::Retries=5 -o DPkg::Lock::Timeout=300 install -y ca-certificates curl git gnupg just rclone jq util-linux unattended-upgrades python3 debian-archive-keyring gh
+[[ -f /usr/bin/gh && -x /usr/bin/gh ]] || { echo 'GitHub CLI is not an executable file at /usr/bin/gh.' >&2; exit 1; }
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL --retry 5 --connect-timeout 20 https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc

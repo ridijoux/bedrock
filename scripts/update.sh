@@ -22,7 +22,9 @@ previous=$(docker inspect --format '{{.Image}}' "$container")
 docker image tag "$previous" bedrock-hermes:rollback
 export HERMES_IMAGE=nousresearch/hermes-agent:latest
 docker compose pull hermes
-if docker compose up -d --wait --wait-timeout 240 hermes && ./scripts/check.sh hermes; then
+# A verified backup precedes this recreation. Recreate even when the image
+# is unchanged so host package upgrades replace bind-mounted CLI inodes.
+if docker compose up -d --force-recreate --wait --wait-timeout 240 hermes && ./scripts/check.sh hermes; then
   install -d -m 0700 /etc/bedrock
   printf '%s\n' "$HERMES_IMAGE" > /etc/bedrock/image.env
   ./scripts/install-timers.sh

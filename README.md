@@ -53,6 +53,8 @@ bash scripts/install.sh  # Bootstrap: installs just and other host tools
 
 The checkout retains its original ownership for subsequent `git pull` operations. Hermes state stays in `/opt/hermes-home/data/hermes`; the checkout is under `/opt/hermes-home/git/bedrock`. On an existing server, leave `data/`, `.env`, and `ops.env` where they are. Place a checkout in `git/bedrock` and run the installer there; it will reapply the systemd units with the new checkout path.
 
+The installer also installs GitHub CLI (`gh`) on the Debian host and mounts its executable read-only into the Hermes container at `/usr/local/bin/gh` (already on PATH). It verifies `gh --version` inside Hermes. Weekly updates recreate Hermes after a verified backup so host package upgrades refresh the mounted binary. Authentication remains in Hermes's persistent home; installing the executable does not grant GitHub access by itself.
+
 After bootstrap, `just install` reapplies installation; `just setup` is an alias. The installer installs dependencies, provisions secrets and backup storage, configures Hermes, verifies an initial backup, and enables the maintenance timers. Interactive steps are:
 
 - Enter the 1Password service account token.

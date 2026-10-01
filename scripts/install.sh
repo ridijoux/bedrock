@@ -43,6 +43,8 @@ else
   ./scripts/setup.sh
 fi
 ./scripts/secrets-sync.sh
+# Check the CLI inside the recreated container, not merely on the host.
+docker compose exec -T hermes gh --version >/dev/null
 if [[ ${reapply:-false} == false ]]; then
   ./scripts/backup.sh
 fi
