@@ -8,7 +8,9 @@ if [[ -f /etc/bedrock/setup-complete && -f $HERMES_DATA_DIR/config.yaml ]]; then
   # backup. A missing Gatelet can be created, but an existing one is unchanged.
   docker compose start hermes
   docker compose up -d --no-recreate --wait --wait-timeout 240 gatelet
-  ./scripts/update.sh
+  # update.sh checks the off-site recovery point before permitting a local-only
+  # snapshot; a stale or missing marker falls back to a verified upload.
+  ./scripts/update.sh --local-backup
   docker compose pull gatelet
   docker compose up -d --wait --wait-timeout 240 gatelet
   exit 0

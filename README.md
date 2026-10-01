@@ -59,7 +59,7 @@ After bootstrap, `just install` reapplies installation; `just setup` is an alias
 - Authorize Google Drive using the localhost URL printed by rclone. The SSH tunnel handles the callback.
 - Select **ChatGPT or Codex Subscription** in the Hermes wizard and complete authentication. Telegram credentials and the user allowlist are provisioned automatically.
 
-Installation can be rerun after a failure. Existing encryption keys are reused, and completed Hermes setup is skipped. Reapplying an existing installation uses the backup and image rollback procedure (one verified backup, not two). Conflicting local and remote encryption settings stop provisioning. An invalid or expired 1Password service account token can be replaced in `/etc/bedrock/op-token` as root.
+Installation can be rerun after a failure. Existing encryption keys are reused, and completed Hermes setup is skipped. Reapplying an existing installation keeps validated local Hermes and Gatelet snapshots before updating the image, without another Drive upload if the last verified off-site backup (daily or manual update) is less than 36 hours old. If it is missing or stale, reinstallation performs a verified Drive backup instead. Image rollback remains available; local snapshots do not protect against host loss. Conflicting local and remote encryption settings stop provisioning. An invalid or expired 1Password service account token can be replaced in `/etc/bedrock/op-token` as root.
 
 ### Optional sudo setup
 
@@ -115,7 +115,7 @@ Each backup:
 4. Also snapshots Gatelet's SQLite database and admin token into a separate encrypted archive, with full remote read-back and SHA-256 comparison.
 5. Saves refreshed Drive credentials to 1Password and removes remote archives older than 14 days.
 
-Successful local archives are removed. Failed local archives remain in `/opt/hermes-home/data/hermes/backups/`; failed verification prevents remote retention cleanup. The Gatelet archive includes both OAuth tokens and the key material needed to decrypt them; keep decrypted archives private. See [Gatelet recovery](docs/gatelet.md#operations-and-recovery) for the separate restore command.
+Successful uploaded archives are removed locally; the three latest validated reinstallation snapshots per service (`pre-install-*.zip`) remain in `/opt/hermes-home/data/hermes/backups/` for on-server recovery. Failed local archives also remain there; failed verification prevents remote retention cleanup. Local archives are **not encrypted**; the Gatelet archive includes both OAuth tokens and the key material needed to decrypt them, so keep the backup directory private. The daily backup and `just update` still upload and verify both archives on Drive. See [Gatelet recovery](docs/gatelet.md#operations-and-recovery) for the separate restore command.
 
 To restore on the current server:
 

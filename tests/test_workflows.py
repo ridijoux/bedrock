@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import time
 import unittest
 import zipfile
 from test_provision import ROOT
@@ -255,8 +256,10 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
         self.assertNotIn('"import"', self.calls())
         self.assertNotIn('"rclone"', self.calls())
 
-    def test_reapplying_install_only_backs_up_once(self):
+    def test_reapplying_install_with_recent_daily_backup_keeps_local_snapshots(self):
         (self.root / 'state/setup-complete').touch()
+        self.daily_timestamp = int(time.time())
+        (self.root / 'state/last-backup').write_text(str(self.daily_timestamp))
         (self.root / 'data/hermes').mkdir(parents=True)
         (self.root / 'data/hermes/config.yaml').write_text('model: configured')
         installer = self.root / 'scripts/install.sh'
@@ -264,24 +267,90 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
         (self.root / 'scripts/install-host.sh').write_text('#!/bin/bash\nexit 0\n')
         result = self.run_script('install.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.calls().count('"cat"'), 2, self.calls())
+        self.assertNotIn('"copyto"', self.calls())
+        self.assertNotIn('"cat"', self.calls())
+        hermes = list((self.root / 'data/hermes/backups').glob('pre-install-hermes-backup-*.zip'))
+        gatelet = list((self.root / 'data/hermes/backups').glob('pre-install-gatelet-backup-*.zip'))
+        self.assertEqual(len(hermes), 1)
+        self.assertEqual(len(gatelet), 1)
+        with zipfile.ZipFile(hermes[0]) as archive:
+            self.assertIsNone(archive.testzip())
+            self.assertIn('config.yaml', archive.namelist())
+        with zipfile.ZipFile(gatelet[0]) as archive:
+            self.assertIsNone(archive.testzip())
+            self.assertEqual(set(archive.namelist()), {'gatelet.db', 'admin.token'})
+        self.assertEqual((self.root / 'state/last-backup').read_text(), str(self.daily_timestamp))
         self.assertNotIn('"import"', self.calls())
 
-    def test_reapplying_setup_uses_backup_before_update(self):
+    def test_reapplying_setup_uses_local_backup_before_update(self):
         (self.root / 'state/setup-complete').touch()
+        (self.root / 'state/last-backup').write_text(str(int(time.time())))
         (self.root / 'data/hermes').mkdir(parents=True)
         (self.root / 'data/hermes/config.yaml').write_text('model: configured')
         (self.root / 'scripts/secrets-sync.sh').write_text((ROOT / 'scripts/secrets-sync.sh').read_text())
         result = self.run_script('setup.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('"setup"', self.calls())
-        self.assertLess(self.calls().index('"cat"'), self.calls().index('"pull", "hermes"'))
+        self.assertNotIn('"copyto"', self.calls())
+        self.assertNotIn('"cat"', self.calls())
         # A changed Compose model must not recreate Hermes until after backup.
-        import json
         calls = [json.loads(line) for line in self.calls().splitlines()]
-        backup_index = next(i for i, call in enumerate(calls) if call[:2] == ['rclone', 'cat'])
+        backup_index = next(i for i, call in enumerate(calls) if 'backup' in call)
+        pull_index = next(i for i, call in enumerate(calls) if call[:3] == ['docker', 'compose', 'pull'] and 'hermes' in call)
+        self.assertLess(backup_index, pull_index)
         for call in calls[:backup_index]:
             self.assertFalse(call[:3] == ['docker', 'compose', 'up'] and 'hermes' in call, call)
+
+    def test_reapplying_setup_without_recent_daily_backup_uploads_before_update(self):
+        (self.root / 'state/setup-complete').touch()
+        (self.root / 'data/hermes').mkdir(parents=True)
+        (self.root / 'data/hermes/config.yaml').write_text('model: configured')
+        result = self.run_script('setup.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(self.calls().index('"cat"'), self.calls().index('"pull", "hermes"'))
+        self.assertFalse(list((self.root / 'data/hermes/backups').glob('*.zip')))
+
+    def test_local_snapshot_failure_prevents_image_pull(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time())))
+        (self.root / 'data/gatelet/admin.token').unlink()
+        result = self.run_script('update.sh', '', '--local-backup')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('"pull"', self.calls())
+        self.assertTrue(list((self.root / 'data/hermes/backups').glob('pre-install-hermes-backup-*.zip')))
+
+    def test_repeated_local_snapshots_retain_only_three_valid_pairs(self):
+        directory = self.root / 'data/hermes/backups'
+        for _ in range(4):
+            result = self.run_script('backup.sh', '', '--local')
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(list(directory.glob('pre-install-hermes-backup-*.zip'))), 3)
+        self.assertEqual(len(list(directory.glob('pre-install-gatelet-backup-*.zip'))), 3)
+
+    def test_direct_local_update_without_recent_offsite_backup_uploads(self):
+        result = self.run_script('update.sh', '', '--local-backup')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(self.calls().index('"cat"'), self.calls().index('"pull", "hermes"'))
+        self.assertFalse(list((self.root / 'data/hermes/backups').glob('*.zip')))
+
+    def test_expired_offsite_marker_requires_upload(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time()) - 37 * 3600))
+        result = self.run_script('update.sh', '', '--local-backup')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('"copyto"', self.calls())
+
+    def test_future_offsite_marker_requires_upload(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time()) + 3600))
+        result = self.run_script('update.sh', '', '--local-backup')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('"copyto"', self.calls())
+
+    def test_recent_manual_update_is_valid_offsite_recovery_point(self):
+        result = self.run_script('update.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (self.root / 'calls').unlink()
+        result = self.run_script('update.sh', '', '--local-backup')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('"copyto"', self.calls())
 
     def test_backup_checks_hermes_not_stopped_gatelet(self):
         check = self.root / 'scripts/check.sh'
