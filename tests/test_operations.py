@@ -32,6 +32,12 @@ class OperationsContracts(unittest.TestCase):
         self.assertIn('create_host_path: false', hermes)
         self.assertIn('/usr/local/bin', hermes.split('PATH:', 1)[1].splitlines()[0])
 
+    def test_install_timer_listing_cannot_open_interactive_pager(self):
+        script = (ROOT / 'scripts/install-timers.sh').read_text()
+        listing = next(line.strip() for line in script.splitlines()
+                       if line.startswith('systemctl ') and 'list-timers' in line)
+        self.assertIn('--no-pager', listing)
+
     @unittest.skipUnless(JUST, 'just binary not available')
     def test_just_recipes_are_grouped_and_exposed(self):
         recipes = subprocess.run([str(JUST), '--list'], cwd=ROOT, text=True, capture_output=True)
