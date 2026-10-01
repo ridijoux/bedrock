@@ -6,4 +6,4 @@ lock
 install -m 0644 systemd/hermes-* /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now hermes-backup.timer hermes-update.timer hermes-check.timer
-systemctl list-timers 'hermes-*'
+systemctl --no-pager list-timers 'hermes-*'
