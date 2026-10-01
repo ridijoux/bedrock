@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/common.sh"
 lock
-require_backup_config
+[[ $# -eq 0 || ( $# -eq 1 && $1 == --local ) ]] || { echo 'Usage: backup.sh [--local]' >&2; exit 1; }
+local_only=false
+if [[ ${1:-} == --local ]]; then
+  local_only=true
+else
+  require_backup_config
+fi
 # Gatelet's SQLite snapshot is valid even when its container is stopped.
 # The backup still fails closed if the token or database cannot be captured.
 ./scripts/check.sh hermes
 prepare_data
-archive="hermes-backup-$(date -u +%Y%m%dT%H%M%SZ)-$$.zip"
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+archive="hermes-backup-$stamp-$$.zip"
+if $local_only; then archive="pre-install-$archive"; fi
 local_archive="$HERMES_DATA_DIR/backups/$archive"
 verified=false
 cleanup() {
-  if $verified; then rm -f "$local_archive"; else echo "Backup did not complete; local archive retained if present: $local_archive" >&2; fi
+  if $verified && ! $local_only; then rm -f "$local_archive"; elif ! $verified; then echo "Backup did not complete; local archive retained if present: $local_archive" >&2; fi
 }
 trap cleanup EXIT
 # Before the image update, `exec` still runs in the *existing* container;
@@ -24,6 +32,26 @@ docker compose exec -T hermes /bin/sh -c '
 [[ -s $local_archive ]] || { echo 'Hermes did not create a backup archive.' >&2; exit 1; }
 chmod 0600 "$local_archive"
 python3 scripts/validate-archive.py "$local_archive"
+if $local_only; then
+  gatelet_archive="gatelet-backup-$stamp-$$.zip"
+  gatelet_archive="pre-install-$gatelet_archive"
+  gatelet_local="$HERMES_DATA_DIR/backups/$gatelet_archive"
+  python3 scripts/gatelet-snapshot.py /opt/hermes-home/data/gatelet "$gatelet_local"
+  chmod 0600 "$gatelet_local"
+  verified=true
+  # Retain three on-host snapshots per service after both archives validate.
+  # Globs sort by timestamp before PID.
+  shopt -s nullglob
+  for service in hermes gatelet; do
+    snapshots=("$HERMES_DATA_DIR/backups/pre-install-$service-backup-"*.zip)
+    if (( ${#snapshots[@]} > 3 )); then
+      rm -- "${snapshots[@]:0:${#snapshots[@]}-3}"
+    fi
+  done
+  shopt -u nullglob
+  echo "Validated local pre-install backups: $local_archive and $gatelet_local"
+  exit 0
+fi
 # Never upload with keys whose recovery copy cannot be verified.
 python3 scripts/provision.py sync-backup
 rclone copyto "$local_archive" "hermes-crypt:daily/$archive" --immutable

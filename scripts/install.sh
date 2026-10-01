@@ -32,7 +32,8 @@ if [[ ${1:-} == --restore ]]; then
 else
   python3 scripts/provision.py sync-secrets
   python3 scripts/provision.py setup-backup
-  # setup.sh performs a verified backup while reapplying an existing install.
+  # setup.sh retains a verified local snapshot (or uploads if daily backups
+  # are stale) while reapplying an existing install.
   # A fresh install still needs its first backup below.
   if [[ -f /etc/bedrock/setup-complete && -f $HERMES_DATA_DIR/config.yaml ]]; then
     reapply=true
@@ -42,6 +43,8 @@ else
   ./scripts/setup.sh
 fi
 ./scripts/secrets-sync.sh
+# Check the CLI inside the recreated container, not merely on the host.
+docker compose exec -T hermes gh --version >/dev/null
 if [[ ${reapply:-false} == false ]]; then
   ./scripts/backup.sh
 fi

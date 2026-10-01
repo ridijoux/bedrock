@@ -20,6 +20,14 @@ services:
         max-file: "3"
     volumes:
       - /opt/hermes-home/data/hermes:/opt/data
+      # Debian 13 on both host and container; do not create a directory if
+      # the host package is missing. /usr/local/bin is already on PATH.
+      - type: bind
+        source: /usr/bin/gh
+        target: /usr/local/bin/gh
+        read_only: true
+        bind:
+          create_host_path: false
       - ./scripts/container-health.py:/opt/bedrock-health.py:ro
     networks:
       - default
