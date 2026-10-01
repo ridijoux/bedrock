@@ -48,18 +48,18 @@ In the root session, place the checkout under `git/` and install. Adjust the sou
 mkdir -p /opt/hermes-home/git
 mv /home/user/bedrock /opt/hermes-home/git/bedrock
 cd /opt/hermes-home/git/bedrock
-bash scripts/install.sh
+bash scripts/install.sh  # Bootstrap: installs just and other host tools
 ```
 
 The checkout retains its original ownership for subsequent `git pull` operations. Hermes state stays in `/opt/hermes-home/data/hermes`; the checkout is under `/opt/hermes-home/git/bedrock`. On an existing server, leave `data/`, `.env`, and `ops.env` where they are. Place a checkout in `git/bedrock` and run the installer there; it will reapply the systemd units with the new checkout path.
 
-The installer installs dependencies, provisions secrets and backup storage, configures Hermes, verifies an initial backup, and enables the maintenance timers. Interactive steps are:
+After bootstrap, `just install` reapplies installation; `just setup` is an alias. The installer installs dependencies, provisions secrets and backup storage, configures Hermes, verifies an initial backup, and enables the maintenance timers. Interactive steps are:
 
 - Enter the 1Password service account token.
 - Authorize Google Drive using the localhost URL printed by rclone. The SSH tunnel handles the callback.
 - Select **ChatGPT or Codex Subscription** in the Hermes wizard and complete authentication. Telegram credentials and the user allowlist are provisioned automatically.
 
-Installation can be rerun after a failure. Existing encryption keys are reused, and completed Hermes setup is skipped. Reapplying an existing installation uses the backup and image rollback procedure. Conflicting local and remote encryption settings stop provisioning. An invalid or expired 1Password service account token can be replaced in `/etc/bedrock/op-token` as root.
+Installation can be rerun after a failure. Existing encryption keys are reused, and completed Hermes setup is skipped. Reapplying an existing installation uses the backup and image rollback procedure (one verified backup, not two). Conflicting local and remote encryption settings stop provisioning. An invalid or expired 1Password service account token can be replaced in `/etc/bedrock/op-token` as root.
 
 ### Optional sudo setup
 
@@ -79,7 +79,10 @@ Run these commands as root from `/opt/hermes-home/git/bedrock`, or prefix them w
 
 ```bash
 just status
-just check
+just check                 # All Compose services and host disk
+just check-hermes          # Hermes only (or: just check hermes)
+just check-gatelet         # Gatelet only (or: just gatelet-check)
+just restart               # Restart Hermes, no backup or restore
 just logs
 just backup
 just backup-list
@@ -88,9 +91,9 @@ just gatelet-backup-list
 systemctl list-timers 'hermes-*'
 ```
 
-The health check verifies the gateway process and disk usage. A Telegram conversation is required to verify the complete bot and model path.
+The Hermes health check verifies the gateway process; Gatelet has no image-level healthcheck, so its check verifies only that the container is running. `just check` discovers and checks every Compose service and verifies host disk usage below 90%. A Telegram conversation is required to verify the complete bot and model path.
 
-`just check` only checks that the container is healthy and disk usage is below 90%; it does **not** check backup freshness or whether the host needs a reboot. For the full scheduled-monitor checks, run `just monitor` as root: it also requires a verified backup from the last 36 hours and reports pending reboots. Neither command replaces sending a test message to the Telegram bot to verify the end-to-end path.
+`just check` does **not** check backup freshness or whether the host needs a reboot. For the full scheduled-monitor checks, run `just monitor` as root: it also requires a verified backup from the last 36 hours and reports pending reboots. Neither command replaces sending a test message to the Telegram bot to verify the end-to-end path. `just restart` restarts Hermes without a backup or restore. `just update` retains a verified pre-update backup and rollback; only `just restore` or `bash scripts/install.sh --restore` imports backup data.
 
 ### Dashboard and remote backend
 
@@ -171,7 +174,7 @@ A shared lock serializes installation and maintenance operations. Service failur
 
 If a new Hermes image fails startup checks, the update script restarts the previous image and reports failure to systemd. The selected image is persisted in `/etc/bedrock/image.env`, which is also used by `just start`. Image rollback does not undo data migrations; the preceding backup is available on Drive. Gatelet is version-pinned and is not upgraded by this timer. Process health checks cannot detect every functional regression in `latest`.
 
-Use `just secrets-sync` to apply Telegram field changes immediately, or `just update` to update the container.
+Use `just secrets-sync` to apply Telegram field changes immediately, or `just update` to update the Hermes image (not the repository or Gatelet image). Recreating the container with changed Compose settings requires `just install`; `just start` and `just gatelet-start` only start existing containers without recreating them, and a plain `just restart` does not apply Compose changes.
 
 ## Repository updates
 
@@ -186,10 +189,15 @@ Then as root:
 
 ```bash
 cd /opt/hermes-home/git/bedrock
-bash scripts/install.sh
+just install
 ```
 
 This reapplies dependencies and systemd units using the existing configuration. Scheduled updates update the Hermes image; repository updates are explicit.
+
+## Repository layout
+
+- `Justfile` imports recipes by domain: `just/host.just` (host, combined backup and checks), `services/hermes/recipes.just` (Hermes operations), and `services/gatelet/recipes.just` (Gatelet operations).
+- `services/gatelet/policies/` contains policy templates; apply them through Gatelet's admin interface (they are not mounted into the container). `scripts/` contains the existing host automation entry points shared with systemd and recovery workflows.
 
 Diagnostics:
 

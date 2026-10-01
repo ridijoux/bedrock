@@ -2,7 +2,9 @@
 source "$(dirname "$0")/common.sh"
 lock
 require_backup_config
-./scripts/check.sh
+# Gatelet's SQLite snapshot is valid even when its container is stopped.
+# The backup still fails closed if the token or database cannot be captured.
+./scripts/check.sh hermes
 prepare_data
 archive="hermes-backup-$(date -u +%Y%m%dT%H%M%SZ)-$$.zip"
 local_archive="$HERMES_DATA_DIR/backups/$archive"

@@ -26,7 +26,7 @@ if name == 'docker':
     if args[0] == 'inspect':
         print('sha256:previous' if '--format' in args else json.dumps([{'State': {'Status': 'running', 'Health': {'Status': 'healthy'}}}]))
     elif 'ps' in args:
-        print('container-id')
+        print('hermes' if '--services' in args else 'container-id')
     elif 'backup' in args:
         destination = root / 'data/hermes/backups' / pathlib.Path(args[args.index('--output')+1]).name
         with zipfile.ZipFile(destination, 'w') as archive:
@@ -171,10 +171,17 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
 
     def test_restore_latest_on_empty_server(self):
         self.make_remote_archive()
+        (self.root / 'scripts/check.sh').write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$TEST_ROOT/check-args"\n')
         result = self.run_script('restore.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.root / 'state/setup-complete').exists())
         self.assertIn('"up"', self.calls())
+        self.assertEqual((self.root / 'check-args').read_text(), 'hermes\n')
+
+    def test_start_never_recreates_existing_service(self):
+        result = self.run_script('compose.sh', '', 'start')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('"--no-recreate"', self.calls())
 
     def test_restore_invalid_name_never_downloads(self):
         result = self.run_script('restore.sh', '', '../escape.zip')
@@ -202,11 +209,46 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / 'state/image.env').read_text().strip(), 'nousresearch/hermes-agent:latest')
 
+    def test_restart_never_backs_up_or_restores(self):
+        result = self.run_script('compose.sh', '', 'restart')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('"restart"', self.calls())
+        self.assertNotIn('"up"', self.calls())
+        self.assertNotIn('"backup"', self.calls())
+        self.assertNotIn('"import"', self.calls())
+        self.assertNotIn('"rclone"', self.calls())
+
+    def test_reapplying_install_only_backs_up_once(self):
+        (self.root / 'state/setup-complete').touch()
+        (self.root / 'data/hermes').mkdir(parents=True)
+        (self.root / 'data/hermes/config.yaml').write_text('model: configured')
+        installer = self.root / 'scripts/install.sh'
+        installer.write_text(installer.read_text().replace('/opt/hermes-home/git/bedrock', str(self.root)).replace('if [[ $EUID -ne 0 ]]; then', 'if false; then'))
+        (self.root / 'scripts/install-host.sh').write_text('#!/bin/bash\nexit 0\n')
+        result = self.run_script('install.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls().count('"cat"'), 2, self.calls())
+        self.assertNotIn('"import"', self.calls())
+
     def test_reapplying_setup_uses_backup_before_update(self):
         (self.root / 'state/setup-complete').touch()
         (self.root / 'data/hermes').mkdir(parents=True)
         (self.root / 'data/hermes/config.yaml').write_text('model: configured')
+        (self.root / 'scripts/secrets-sync.sh').write_text((ROOT / 'scripts/secrets-sync.sh').read_text())
         result = self.run_script('setup.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('"setup"', self.calls())
         self.assertLess(self.calls().index('"cat"'), self.calls().index('"pull", "hermes"'))
+        # A changed Compose model must not recreate Hermes until after backup.
+        import json
+        calls = [json.loads(line) for line in self.calls().splitlines()]
+        backup_index = next(i for i, call in enumerate(calls) if call[:2] == ['rclone', 'cat'])
+        for call in calls[:backup_index]:
+            self.assertFalse(call[:3] == ['docker', 'compose', 'up'] and 'hermes' in call, call)
+
+    def test_backup_checks_hermes_not_stopped_gatelet(self):
+        check = self.root / 'scripts/check.sh'
+        check.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$TEST_ROOT/check-args"\n')
+        result = self.run_script('backup.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'check-args').read_text(), 'hermes\n')

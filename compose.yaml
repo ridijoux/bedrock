@@ -7,8 +7,6 @@ services:
     command: gateway run
     environment:
       HERMES_DASHBOARD: "1"
-      # Keep user-installed CLIs (for example gh) available to gateway tools.
-      PATH: /opt/data/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
     ports:
       - "${HERMES_DASHBOARD_BIND:-0.0.0.0}:9119:9119"
     stop_grace_period: 60s
