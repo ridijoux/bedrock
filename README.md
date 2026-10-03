@@ -117,7 +117,9 @@ Each backup:
 4. Also snapshots Gatelet's SQLite database and admin token into a separate encrypted archive, with full remote read-back and SHA-256 comparison.
 5. Saves refreshed Drive credentials to 1Password and removes remote archives older than 14 days.
 
-Successful uploaded archives are removed locally; the three latest validated reinstallation snapshots per service (`pre-install-*.zip`) remain in `/opt/hermes-home/data/hermes/backups/` for on-server recovery. Failed local archives also remain there; failed verification prevents remote retention cleanup. Local archives are **not encrypted**; the Gatelet archive includes both OAuth tokens and the key material needed to decrypt them, so keep the backup directory private. The daily backup and `just update` still upload and verify both archives on Drive. See [Gatelet recovery](docs/gatelet.md#operations-and-recovery) for the separate restore command.
+The daily backup uploads and verifies both archives; only after success does it delete remote archives older than 14 days. The scheduled weekly `just update` requires a verified off-site backup **from the same local calendar day**; if the daily backup failed, it skips the update. It creates no additional archive or upload. During reinstallation, `update.sh --local-backup` retains its separate pre-install safety behavior (a validated local snapshot when a recent off-site backup exists, otherwise a new verified upload).
+
+Successful uploaded archives are removed locally. Failed uploads leave plaintext archives for recovery until a later successful off-site backup; while Drive is unavailable, only the newest three of each type are retained. The three newest *complete pairs* of reinstallation snapshots (`pre-install-*.zip`) and three newest pre-restore snapshots per service remain in `/opt/hermes-home/data/hermes/backups/`. Any unmatched older reinstallation snapshots are capped at three per service until the next verified off-site backup removes them. These are **not encrypted**; the Gatelet archive includes both OAuth tokens and the key material needed to decrypt them, so keep the backup directory private. Hermes excludes its `backups/` directory from `hermes backup`, so these ZIPs do not nest inside subsequent archives. See [Gatelet recovery](docs/gatelet.md#operations-and-recovery) for the separate restore command.
 
 To restore on the current server:
 
@@ -135,7 +137,7 @@ docker compose run --rm -T --no-deps hermes import /opt/data/backups/pre-restore
 just start
 ```
 
-Pre-restore snapshots are retained until removed manually.
+The three newest pre-restore snapshots per service are retained; older ones are removed by the next backup or restore.
 
 ### Replacement server
 

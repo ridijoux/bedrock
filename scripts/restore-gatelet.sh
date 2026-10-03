@@ -9,7 +9,7 @@ fi
 [[ $archive =~ ^gatelet-backup-[0-9]{8}T[0-9]{6}Z-[0-9]+\.zip$ ]] || { echo 'No valid Gatelet backup found.' >&2; exit 1; }
 prepare_data
 local_archive="$HERMES_DATA_DIR/backups/restore-$archive"
-trap 'rm -f "$local_archive"' EXIT
+trap 'rm -f "$local_archive"; python3 scripts/prune-local-backups.py "$HERMES_DATA_DIR/backups" local' EXIT
 rclone copyto "hermes-crypt:daily/$archive" "$local_archive"
 chmod 0600 "$local_archive"
 python3 scripts/gatelet-restore.py "$local_archive" /opt/hermes-home/data/gatelet --check

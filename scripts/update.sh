@@ -3,18 +3,29 @@ source "$(dirname "$0")/common.sh"
 lock
 [[ $# -eq 0 || ( $# -eq 1 && $1 == --local-backup ) ]] || { echo 'Usage: update.sh [--local-backup]' >&2; exit 1; }
 ./scripts/secrets-sync.sh
-if [[ ${1:-} == --local-backup && -s /etc/bedrock/last-backup ]]; then
+if [[ -s /etc/bedrock/last-backup ]]; then
   last=$(< /etc/bedrock/last-backup)
 else
   last=''
 fi
 now=$(date -u +%s)
-if [[ ${1:-} == --local-backup && $last =~ ^[0-9]+$ ]] && (( now >= 10#$last && now - 10#$last < 36 * 3600 )); then
-  ./scripts/backup.sh --local
-  backup_location='on this server'
+if [[ ${1:-} == --local-backup ]]; then
+  if [[ $last =~ ^[0-9]+$ ]] && (( now >= 10#$last && now - 10#$last < 36 * 3600 )); then
+    ./scripts/backup.sh --local
+    backup_location='on this server'
+  else
+    ./scripts/backup.sh
+    backup_location='on Drive'
+  fi
 else
-  ./scripts/backup.sh
-  backup_location='on Drive'
+  # The scheduled update relies on today's verified off-site daily backup;
+  # do not duplicate its upload or create an unneeded local snapshot.
+  if [[ ! $last =~ ^[0-9]+$ ]] || (( now < 10#$last )) ||
+    [[ $(date -d "@$last" +%F) != "$(date +%F)" ]]; then
+    echo "Today's verified daily backup is missing; update skipped." >&2
+    exit 1
+  fi
+  backup_location='on Drive (daily)'
 fi
 container=$(docker compose ps -q hermes)
 previous=$(docker inspect --format '{{.Image}}' "$container")
