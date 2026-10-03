@@ -42,7 +42,6 @@ services:
       resources:
         limits:
           memory: 4G
-          cpus: "2.0"
 
   gatelet:
     image: ${GATELET_IMAGE:-ghcr.io/hannesill/gatelet:0.2.4}
