@@ -40,8 +40,11 @@ if name == 'docker':
         print('hermes' if '--services' in args else 'container-id')
     elif 'backup' in args:
         destination = root / 'data/hermes/backups' / pathlib.Path(args[args.index('--output')+1]).name
-        with zipfile.ZipFile(destination, 'w') as archive:
-            archive.writestr('config.yaml', 'model: test')
+        if mode == 'invalid-rollback' and destination.name.startswith('pre-restore-'):
+            destination.write_bytes(b'corrupt')
+        else:
+            with zipfile.ZipFile(destination, 'w') as archive:
+                archive.writestr('config.yaml', 'model: test')
     elif 'import' in args and mode == 'import':
         sys.exit(1)
     elif 'pull' in args and mode == 'pull':
@@ -193,6 +196,40 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
                 self.assertFalse((self.root / 'state/last-backup').exists())
                 self.assertTrue(list((self.root / 'data/hermes/backups').glob('*.zip')))
 
+    def test_repeated_failed_uploads_keep_only_three_local_archives(self):
+        for _ in range(4):
+            result = self.run_script('backup.sh', 'upload')
+            self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(len(list((self.root / 'data/hermes/backups').glob('hermes-backup-*.zip'))), 3)
+
+    def test_successful_backup_cleans_previous_failed_local_archives(self):
+        for _ in range(2):
+            self.assertNotEqual(self.run_script('backup.sh', 'upload').returncode, 0)
+        self.assertEqual(self.run_script('backup.sh').returncode, 0)
+        self.assertFalse(list((self.root / 'data/hermes/backups').glob('hermes-backup-*.zip')))
+
+    def test_repeated_restores_keep_only_three_local_rollback_archives(self):
+        name = 'gatelet-backup-20260926T000000Z-1.zip'
+        snapshot = self.root / 'scripts/gatelet-snapshot.py'
+        subprocess.run(['python3', str(snapshot), str(self.root / 'data/gatelet'),
+                        str(self.root / 'remote/daily' / name)], check=True)
+        for _ in range(4):
+            self.assertEqual(self.run_script('restore-gatelet.sh', '', name).returncode, 0)
+        self.assertEqual(len(list((self.root / 'data/hermes/backups').glob('pre-restore-gatelet-*.zip'))), 3)
+
+    def test_invalid_pre_restore_snapshot_does_not_displace_valid_rollbacks(self):
+        name = self.make_remote_archive()
+        (self.root / 'data/hermes').mkdir(parents=True, exist_ok=True)
+        (self.root / 'data/hermes/config.yaml').write_text('model: configured')
+        for _ in range(3):
+            self.assertEqual(self.run_script('restore.sh', '', name).returncode, 0)
+        directory = self.root / 'data/hermes/backups'
+        valid = set(directory.glob('pre-restore-*.zip'))
+        self.assertEqual(len(valid), 3)
+        result = self.run_script('restore.sh', 'invalid-rollback', name)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(set(directory.glob('pre-restore-*.zip')), valid)
+
     def test_corrupt_restore_never_stops_gateway(self):
         archive = self.make_remote_archive(corrupt=True)
         result = self.run_script('restore.sh', '', archive)
@@ -227,26 +264,45 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
         self.assertEqual(self.calls(), '')
 
     def test_update_failure_rolls_back_but_reports_failure(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time())))
         result = self.run_script('update.sh', 'update')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('"--pull", "never"', self.calls())
         self.assertEqual((self.root / 'state/image.env').read_text().strip(), 'bedrock-hermes:rollback')
 
     def test_failed_backup_prevents_image_pull(self):
-        result = self.run_script('update.sh', 'upload')
+        result = self.run_script('update.sh')
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('"pull"', self.calls())
+        self.assertNotIn('"copyto"', self.calls())
 
     def test_failed_pull_does_not_replace_running_container(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time())))
         result = self.run_script('update.sh', 'pull')
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('"up"', self.calls())
 
     def test_update_success_persists_latest_image(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time())))
         result = self.run_script('update.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.root / 'state/image.env').read_text().strip(), 'nousresearch/hermes-agent:latest')
         self.assertIn('"--force-recreate"', self.calls())
+        self.assertNotIn('"backup"', self.calls())
+        self.assertNotIn('"copyto"', self.calls())
+
+    def test_weekly_update_rejects_yesterdays_verified_backup(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time()) - 24 * 3600))
+        result = self.run_script('update.sh')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('"pull"', self.calls())
+        self.assertNotIn('"backup"', self.calls())
+
+    def test_weekly_update_rejects_future_marker(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time()) + 3600))
+        result = self.run_script('update.sh')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('"pull"', self.calls())
 
     def test_restart_never_backs_up_or_restores(self):
         result = self.run_script('compose.sh', '', 'restart')
@@ -318,7 +374,30 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
         result = self.run_script('update.sh', '', '--local-backup')
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('"pull"', self.calls())
-        self.assertTrue(list((self.root / 'data/hermes/backups').glob('pre-install-hermes-backup-*.zip')))
+        self.assertFalse(list((self.root / 'data/hermes/backups').glob('pre-install-hermes-backup-*.zip')))
+
+    def test_failed_local_snapshot_does_not_displace_valid_pairs(self):
+        directory = self.root / 'data/hermes/backups'
+        for _ in range(3):
+            self.assertEqual(self.run_script('backup.sh', '', '--local').returncode, 0)
+        original = set(directory.glob('pre-install-*.zip'))
+        self.assertEqual(len(original), 6)
+        (self.root / 'data/gatelet/admin.token').unlink()
+        result = self.run_script('backup.sh', '', '--local')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(set(directory.glob('pre-install-*.zip')), original)
+
+    def test_orphan_pre_install_snapshots_are_bounded_without_evicting_pairs(self):
+        directory = self.root / 'data/hermes/backups'
+        for _ in range(3):
+            self.assertEqual(self.run_script('backup.sh', '', '--local').returncode, 0)
+        paired = set(directory.glob('pre-install-*.zip'))
+        for day in range(1, 6):
+            (directory / f'pre-install-hermes-backup-2026090{day}T000000Z-1.zip').write_bytes(b'orphan')
+        result = self.run_script('backup.sh', 'upload')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(paired.issubset(set(directory.glob('pre-install-*.zip'))))
+        self.assertEqual(len(list(directory.glob('pre-install-*.zip'))), 9)
 
     def test_repeated_local_snapshots_retain_only_three_valid_pairs(self):
         directory = self.root / 'data/hermes/backups'
@@ -347,6 +426,7 @@ pathlib.Path(os.environ['TEST_ROOT'], 'hermes-args').write_text(json.dumps(sys.a
         self.assertIn('"copyto"', self.calls())
 
     def test_recent_manual_update_is_valid_offsite_recovery_point(self):
+        (self.root / 'state/last-backup').write_text(str(int(time.time())))
         result = self.run_script('update.sh')
         self.assertEqual(result.returncode, 0, result.stderr)
         (self.root / 'calls').unlink()

@@ -18,7 +18,21 @@ if $local_only; then archive="pre-install-$archive"; fi
 local_archive="$HERMES_DATA_DIR/backups/$archive"
 verified=false
 cleanup() {
-  if $verified && ! $local_only; then rm -f "$local_archive"; elif ! $verified; then echo "Backup did not complete; local archive retained if present: $local_archive" >&2; fi
+  if $verified && ! $local_only; then
+    rm -f "$local_archive"
+    python3 scripts/prune-local-backups.py "$HERMES_DATA_DIR/backups" remote
+  else
+    if ! $verified; then
+      if $local_only; then
+        # Never let an incomplete pair displace a validated pre-install pair.
+        rm -f "$local_archive"
+        if [[ -n ${gatelet_local:-} ]]; then rm -f "$gatelet_local"; fi
+      else
+        echo "Backup did not complete; local archive retained if present: $local_archive" >&2
+      fi
+    fi
+    python3 scripts/prune-local-backups.py "$HERMES_DATA_DIR/backups" local
+  fi
 }
 trap cleanup EXIT
 # Before the image update, `exec` still runs in the *existing* container;
@@ -39,16 +53,6 @@ if $local_only; then
   python3 scripts/gatelet-snapshot.py /opt/hermes-home/data/gatelet "$gatelet_local"
   chmod 0600 "$gatelet_local"
   verified=true
-  # Retain three on-host snapshots per service after both archives validate.
-  # Globs sort by timestamp before PID.
-  shopt -s nullglob
-  for service in hermes gatelet; do
-    snapshots=("$HERMES_DATA_DIR/backups/pre-install-$service-backup-"*.zip)
-    if (( ${#snapshots[@]} > 3 )); then
-      rm -- "${snapshots[@]:0:${#snapshots[@]}-3}"
-    fi
-  done
-  shopt -u nullglob
   echo "Validated local pre-install backups: $local_archive and $gatelet_local"
   exit 0
 fi
@@ -67,7 +71,7 @@ gatelet_verified=false
 gatelet_cleanup() {
   if $gatelet_verified; then rm -f "$gatelet_local"; else echo "Gatelet backup retained if present: $gatelet_local" >&2; fi
 }
-trap 'cleanup; gatelet_cleanup' EXIT
+trap 'gatelet_cleanup; cleanup' EXIT
 python3 scripts/gatelet-snapshot.py /opt/hermes-home/data/gatelet "$gatelet_local"
 rclone copyto "$gatelet_local" "hermes-crypt:daily/$gatelet_archive" --immutable
 local_hash=$(sha256sum "$gatelet_local" | cut -d ' ' -f 1)
