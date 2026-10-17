@@ -1,6 +1,5 @@
-import contextlib
+"""Credentials and dotenv provisioning without recovery infrastructure."""
 import importlib.util
-import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def load(name, file):
     spec = importlib.util.spec_from_file_location(name, ROOT / 'scripts' / file)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -21,134 +21,43 @@ def load(name, file):
 
 provision = load('provision', 'provision.py')
 merge = load('merge', 'merge-env.py')
-CONFIG = '''[hermes-drive]
-type = drive
-token = {"access_token":"test","refresh_token":"refresh"}
-[hermes-crypt]
-type = crypt
-remote = hermes-drive:bedrock-backups
-password = test-obscured
-password2 = test-salt
-filename_encryption = standard
-directory_name_encryption = true
-'''
 
 
 class ProvisionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.path = Path(self.temp.name) / 'rclone.conf'
-        p = patch.object(provision, 'CONFIG', self.path)
+        self.token = Path(self.temp.name) / 'op-token'
+        p = patch.object(provision, 'TOKEN', self.token)
         p.start()
         self.addCleanup(p.stop)
 
-    def test_refuses_unencrypted_remote(self):
-        with self.assertRaises(ValueError):
-            provision.parse_config(CONFIG.replace('type = crypt', 'type = alias'))
+    def test_login_reuses_token_without_reprompting(self):
+        self.token.write_text('saved\n')
+        with patch.object(provision, 'run', return_value=subprocess.CompletedProcess([], 0, stdout='{}')) as run, \
+             patch.object(provision.getpass, 'getpass') as prompt, \
+             patch.object(provision.os, 'geteuid', return_value=0), \
+             patch.object(provision.sys, 'argv', ['provision.py', 'login']):
+            provision.main()
+        prompt.assert_not_called()
+        self.assertEqual(run.call_args.args[0][:3], ['op', 'vault', 'get'])
+        self.assertEqual(run.call_args.kwargs['env']['OP_SERVICE_ACCOUNT_TOKEN'], 'saved')
 
-    def test_refuses_disabled_content_encryption(self):
-        with self.assertRaisesRegex(ValueError, 'content encryption'):
-            provision.parse_config(CONFIG + 'no_data_encryption = true\n')
+    def test_login_token_is_private(self):
+        with patch.object(provision.getpass, 'getpass', return_value='test-token'), \
+             patch.object(provision, 'op', return_value='{}'), \
+             patch.object(provision.os, 'geteuid', return_value=0), \
+             patch.object(provision.sys, 'argv', ['provision.py', 'login']):
+            provision.main()
+        self.assertEqual(self.token.read_text(), 'test-token\n')
+        self.assertEqual(self.token.stat().st_mode & 0o777, 0o600)
 
-    def test_first_setup_publishes_keys_before_probe(self):
-        events = []
-        def authorize(env):
-            Path(env['RCLONE_CONFIG']).write_text(CONFIG.split('[hermes-crypt]')[0])
-        def run(args, **kwargs):
-            if args[1] == 'obscure':
-                return subprocess.CompletedProcess(args, 0, stdout='obscured-' + kwargs['input'])
-            events.append(args[3])
-            return subprocess.CompletedProcess(args, 0)
-        with patch.object(provision, 'document_id', return_value=None), patch.object(provision.os, 'chown'), patch.object(provision, 'authorize_drive', side_effect=authorize), patch.object(provision, 'run', side_effect=run), patch.object(provision, 'sync_backup', side_effect=lambda: events.append('escrow')):
-            provision.setup_backup()
-        config = provision.parse_config(self.path.read_text())
-        self.assertNotEqual(config['hermes-crypt']['password'], config['hermes-crypt']['password2'])
-        self.assertEqual(events, ['escrow', 'mkdir', 'lsf'])
-        self.assertFalse(self.path.with_name('rclone.pending.conf').exists())
-
-    def test_failed_escrow_keeps_generated_keys_for_retry(self):
-        def authorize(env):
-            Path(env['RCLONE_CONFIG']).write_text(CONFIG.split('[hermes-crypt]')[0])
-        with patch.object(provision, 'document_id', return_value=None), patch.object(provision.os, 'chown'), patch.object(provision, 'authorize_drive', side_effect=authorize), patch.object(provision, 'run', return_value=subprocess.CompletedProcess([], 0, stdout='obscured')), patch.object(provision, 'sync_backup', side_effect=ValueError('vault write failed')):
-            with self.assertRaisesRegex(ValueError, 'vault write'):
-                provision.setup_backup()
-        generated = self.path.read_text()
-        with patch.object(provision, 'document_id', return_value=None), patch.object(provision, 'sync_backup'), patch.object(provision, 'run'), patch.object(provision, 'authorize_drive') as auth:
-            provision.setup_backup()
-            auth.assert_not_called()
-        self.assertEqual(self.path.read_text(), generated)
-
-    def test_recovery_missing_keys_never_generates(self):
-        with patch.object(provision, 'document_id', return_value=None), patch.object(provision, 'authorize_drive') as auth:
-            with self.assertRaisesRegex(ValueError, 'No recovery'):
-                provision.setup_backup(recovery=True)
-            auth.assert_not_called()
-        self.assertFalse(self.path.exists())
-
-    def test_vault_outage_never_generates_keys(self):
-        with patch.object(provision, 'op', side_effect=subprocess.CalledProcessError(1, ['op'])), patch.object(provision, 'authorize_drive') as auth:
-            with self.assertRaises(subprocess.CalledProcessError):
-                provision.setup_backup()
-            auth.assert_not_called()
-        self.assertFalse(self.path.exists())
-
-    def test_duplicates_fail_closed(self):
-        items = [{'title': 'rclone.conf', 'id': 'one'}, {'title': 'rclone.conf', 'id': 'two'}]
-        with patch.object(provision, 'op', return_value=json.dumps(items)):
-            with self.assertRaisesRegex(ValueError, 'Multiple'):
-                provision.document_id()
-
-    def test_changed_key_cannot_overwrite_recovery(self):
-        self.path.write_text(CONFIG.replace('test-obscured', 'new-key'))
-        with patch.object(provision, 'document_id', return_value='doc'), patch.object(provision, 'op', return_value=CONFIG) as op:
-            with self.assertRaisesRegex(ValueError, 'Refusing'):
-                provision.sync_backup()
-            self.assertEqual(op.call_count, 1)
-
-    def test_refresh_token_is_synchronized_and_read_back(self):
-        renewed = CONFIG.replace('"refresh"', '"renewed"')
-        self.path.write_text(renewed)
-        with patch.object(provision, 'document_id', return_value='doc'), patch.object(provision, 'op', side_effect=[CONFIG, '', renewed]) as op:
-            provision.sync_backup()
-        self.assertEqual(op.call_args_list[1].args[:3], ('document', 'edit', 'doc'))
-        self.assertEqual(op.call_args_list[2].args[:3], ('document', 'get', 'doc'))
-
-    def test_failed_readback_fails(self):
-        self.path.write_text(CONFIG)
-        with patch.object(provision, 'document_id', return_value=None), patch.object(provision, 'op', side_effect=['{"id":"doc"}', 'damaged']):
-            with self.assertRaisesRegex(ValueError, 'read-back'):
-                provision.sync_backup()
-
-    def test_existing_keys_reused_without_oauth(self):
-        self.path.write_text(CONFIG)
-        with patch.object(provision, 'document_id', return_value='doc'), patch.object(provision, 'op', return_value=CONFIG), patch.object(provision, 'sync_backup'), patch.object(provision, 'run'), patch.object(provision, 'authorize_drive') as auth:
-            provision.setup_backup()
-            provision.setup_backup()
-            auth.assert_not_called()
-        self.assertEqual(self.path.read_text(), CONFIG)
-        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
-
-    def test_recovery_restores_configuration(self):
-        with patch.object(provision, 'document_id', return_value='doc'), patch.object(provision, 'op', return_value=CONFIG), patch.object(provision.os, 'chown'), patch.object(provision, 'sync_backup'), patch.object(provision, 'run') as run:
-            provision.setup_backup(recovery=True)
-        self.assertEqual([call.args[0][3] for call in run.call_args_list], ['lsf'])
-        self.assertEqual(self.path.read_text(), CONFIG)
-        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
-
-    def test_oauth_stdout_does_not_expose_token(self):
-        class Process:
-            stdout = iter(['Open http://127.0.0.1:53682/auth?state=xyz\n', 'token = PRIVATE-TOKEN\n'])
-            def __enter__(self): return self
-            def __exit__(self, *args): pass
-            def wait(self): return 0
-        output = io.StringIO()
-        with patch.object(provision.subprocess, 'Popen', return_value=Process()) as call, contextlib.redirect_stdout(output):
-            provision.authorize_drive({})
-        self.assertNotIn('PRIVATE-TOKEN', output.getvalue())
-        self.assertIn('http://127.0.0.1:', output.getvalue())
-        self.assertNotIn('--no-output', call.call_args.args[0])
-        self.assertIn('config_auth_no_browser', call.call_args.args[0])
+    def test_removed_backup_actions_are_rejected(self):
+        with patch.object(provision.os, 'geteuid', return_value=0):
+            for action in ('setup-backup', 'recover-backup', 'sync-backup', 'validate-backup'):
+                with self.subTest(action=action), patch.object(provision.sys, 'argv', ['provision.py', action]):
+                    with self.assertRaisesRegex(ValueError, 'Unknown'):
+                        provision.main()
 
     def test_merge_preserves_settings_and_deduplicates(self):
         incoming = Path(self.temp.name) / 'incoming'
@@ -161,7 +70,8 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
     def test_group_chat_cannot_be_used_as_personal_allowlist(self):
-        item = {'fields': [{'label': 'TELEGRAM_BOT_TOKEN', 'value': '123:abc'}, {'label': 'TELEGRAM_CHAT_ID', 'value': '-100123'}]}
+        item = {'fields': [{'label': 'TELEGRAM_BOT_TOKEN', 'value': '123:abc'},
+                           {'label': 'TELEGRAM_CHAT_ID', 'value': '-100123'}]}
         with patch.object(provision, 'op', return_value=json.dumps(item)):
             with self.assertRaisesRegex(ValueError, 'positive'):
                 provision.sync_secrets()
@@ -172,3 +82,15 @@ class ProvisionTests(unittest.TestCase):
         with patch.object(provision, 'op', return_value=json.dumps(item)):
             with self.assertRaisesRegex(ValueError, 'HERMES_DASHBOARD_BASIC_AUTH_USERNAME'):
                 provision.sync_secrets()
+
+    def test_credentials_sync_uses_only_hermes_env(self):
+        item = {'fields': [{'label': 'TELEGRAM_BOT_TOKEN', 'value': '123:abc'},
+                           {'label': 'TELEGRAM_CHAT_ID', 'value': '123'},
+                           {'label': 'HERMES_DASHBOARD_BASIC_AUTH_USERNAME', 'value': 'user'},
+                           {'label': 'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD', 'value': 'password-long-enough'},
+                           {'label': 'HERMES_DASHBOARD_BASIC_AUTH_SECRET', 'value': 's' * 32}]}
+        with patch.object(provision, 'op', return_value=json.dumps(item)), \
+             patch.object(provision, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+            provision.sync_secrets()
+        self.assertEqual(run.call_count, 1)
+        self.assertIn('merge-env.py', ' '.join(run.call_args.args[0]))
