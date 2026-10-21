@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -65,6 +66,11 @@ def sync_secrets():
                f'HERMES_DASHBOARD_BASIC_AUTH_USERNAME={username}\n'
                f'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD={password}\n'
                f'HERMES_DASHBOARD_BASIC_AUTH_SECRET={secret}\n')
+    merge_credentials(content)
+    print('Telegram credentials and private user allowlist synchronized.')
+
+
+def merge_credentials(content):
     fd, name = tempfile.mkstemp()
     try:
         with os.fdopen(fd, 'w') as stream:
@@ -72,7 +78,34 @@ def sync_secrets():
         run(['python3', str(ROOT / 'scripts/merge-env.py'), name, str(HOME / 'data/hermes/.env')])
     finally:
         os.unlink(name)
-    print('Telegram credentials and private user allowlist synchronized.')
+
+
+def local_secrets():
+    path = HOME / 'data/hermes/.env'
+    values = {}
+    if path.exists():
+        for line in path.read_text().splitlines():
+            key, separator, value = line.partition('=')
+            if separator:
+                values[key] = value
+    prefix = 'HERMES_DASHBOARD_BASIC_AUTH_'
+    username = values.get(prefix + 'USERNAME', '')
+    password = values.get(prefix + 'PASSWORD', '')
+    secret = values.get(prefix + 'SECRET', '')
+    if not username:
+        username = input('Saruman dashboard username: ').strip()
+    if not password:
+        password = getpass.getpass('Saruman dashboard password (at least 16 characters): ')
+    if not secret:
+        secret = secrets.token_hex(32)
+    if not re.fullmatch(r'[A-Za-z0-9_.@-]+', username):
+        raise ValueError('Invalid dashboard username.')
+    if len(password) < 16 or any(char in password for char in '\n\r'):
+        raise ValueError('Dashboard password must contain at least 16 characters on one line.')
+    if len(secret) < 32 or any(char in secret for char in '\n\r'):
+        raise ValueError('Dashboard session secret must contain at least 32 characters on one line.')
+    merge_credentials(f'{prefix}USERNAME={username}\n{prefix}PASSWORD={password}\n{prefix}SECRET={secret}\n')
+    print('Saruman dashboard credentials saved locally.')
 
 
 def main():
@@ -80,9 +113,13 @@ def main():
         raise ValueError('Run with sudo (or as root).')
     os.umask(0o077)
     if len(sys.argv) != 2:
-        raise ValueError('Usage: provision.py login|sync-secrets')
+        raise ValueError('Usage: provision.py login|sync-secrets|local-secrets')
     action = sys.argv[1]
-    if action == 'login':
+    if action == 'local-secrets':
+        local_secrets()
+    elif os.environ.get('HERMES_INSTANCE', 'gonzabot') != 'gonzabot':
+        raise ValueError('1Password provisioning is only available for Gonzabot.')
+    elif action == 'login':
         if not TOKEN.exists():
             token = getpass.getpass(f'1Password service account token (read-only {VAULT}): ').strip()
             if not token:

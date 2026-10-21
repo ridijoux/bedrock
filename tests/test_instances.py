@@ -31,27 +31,28 @@ class InstanceTests(unittest.TestCase):
         personal = json.loads(self.profile('gonzabot').stdout)
         professional = json.loads(self.profile('saruman').stdout)
         for key in ('HERMES_HOME', 'BEDROCK_STATE', 'HERMES_DATA_DIR',
-                    'COMPOSE_PROJECT_NAME', 'HERMES_VAULT',
-                    'HERMES_ITEM', 'HERMES_ROLLBACK_IMAGE',
+                    'COMPOSE_PROJECT_NAME', 'HERMES_ROLLBACK_IMAGE',
                     'HERMES_DASHBOARD_PORT'):
             with self.subTest(key=key):
                 self.assertNotEqual(personal[key], professional[key])
 
     def test_professional_has_no_gatelet_admin_port(self):
-        self.assertNotIn('GATELET_ADMIN_PORT', json.loads(self.profile('saruman').stdout))
+        values = json.loads(self.profile('saruman').stdout)
+        for key in ('GATELET_ADMIN_PORT', 'HERMES_VAULT', 'HERMES_ITEM'):
+            self.assertNotIn(key, values)
 
     def test_invalid_instance_fails(self):
         self.assertNotEqual(self.profile('saruman-typo').returncode, 0)
 
-    def test_professional_provisioning_uses_selected_resources(self):
+    def test_professional_provisioning_uses_local_resources(self):
         command = """source scripts/instance.sh
-python3 -c 'import scripts.provision as p; import json; print(json.dumps([str(p.TOKEN), p.VAULT, p.ITEM, str(p.HOME)]))'
+python3 -c 'import scripts.provision as p; import json; print(json.dumps([str(p.TOKEN), str(p.HOME)]))'
 """
         result = subprocess.run(['bash', '-ec', command], cwd=ROOT,
                                 env={**os.environ, 'HERMES_INSTANCE': 'saruman'},
                                 capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout), [
-            '/etc/bedrock-saruman/op-token', 'Bedrock-Pro', 'Saruman',
+            '/etc/bedrock-saruman/op-token',
             '/opt/hermes-saruman',
         ])
 

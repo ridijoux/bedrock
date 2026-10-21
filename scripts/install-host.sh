@@ -24,7 +24,9 @@ chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
 apt-get -o Acquire::Retries=5 -o DPkg::Lock::Timeout=300 update
 apt-get -o Acquire::Retries=5 -o DPkg::Lock::Timeout=300 install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-"$(dirname "$0")/install-1password-cli.sh"
+if [[ ${HERMES_INSTANCE:-gonzabot} == gonzabot ]]; then
+  "$(dirname "$0")/install-1password-cli.sh"
+fi
 systemctl enable --now docker
 # Undo only the unattended-upgrades policy created by earlier Bedrock versions.
 auto=/etc/apt/apt.conf.d/20auto-upgrades

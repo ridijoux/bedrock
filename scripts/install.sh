@@ -29,7 +29,9 @@ systemctl daemon-reload
 fi
 ./scripts/install-host.sh
 prepare_data
-python3 scripts/provision.py login
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  python3 scripts/provision.py login
+fi
 ./scripts/setup.sh
 docker compose exec -T hermes gh --version >/dev/null
 if [[ $HERMES_INSTANCE == gonzabot ]]; then

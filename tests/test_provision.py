@@ -23,6 +23,11 @@ provision = load('provision', 'provision.py')
 merge = load('merge', 'merge-env.py')
 
 
+def local_merge(args):
+    with patch.object(merge.sys, 'argv', args[1:]):
+        merge.main()
+
+
 class ProvisionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -94,3 +99,50 @@ class ProvisionTests(unittest.TestCase):
             provision.sync_secrets()
         self.assertEqual(run.call_count, 1)
         self.assertIn('merge-env.py', ' '.join(run.call_args.args[0]))
+
+    def test_local_credentials_are_created_without_1password(self):
+        home = Path(self.temp.name)
+        with patch.object(provision, 'HOME', home), \
+             patch('builtins.input', return_value='saruman'), \
+             patch.object(provision.getpass, 'getpass', return_value='a-local-password-123'), \
+             patch.object(provision, 'op') as op, \
+             patch.object(merge.os, 'chown'), \
+             patch.object(provision, 'run', side_effect=lambda args: local_merge(args)):
+            provision.local_secrets()
+        op.assert_not_called()
+        path = home / 'data/hermes/.env'
+        values = dict(line.split('=', 1) for line in path.read_text().splitlines())
+        self.assertEqual(values['HERMES_DASHBOARD_BASIC_AUTH_USERNAME'], 'saruman')
+        self.assertEqual(values['HERMES_DASHBOARD_BASIC_AUTH_PASSWORD'], 'a-local-password-123')
+        self.assertEqual(len(values['HERMES_DASHBOARD_BASIC_AUTH_SECRET']), 64)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_local_credentials_reused_and_other_settings_preserved(self):
+        home = Path(self.temp.name)
+        path = home / 'data/hermes/.env'
+        path.parent.mkdir(parents=True)
+        original = ('TELEGRAM_BOT_TOKEN=123:abc\nMODEL=custom\n'
+                    'HERMES_DASHBOARD_BASIC_AUTH_USERNAME=saruman\n'
+                    'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=a-local-password-123\n'
+                    'HERMES_DASHBOARD_BASIC_AUTH_SECRET=' + 's' * 32 + '\n')
+        path.write_text(original)
+        with patch.object(provision, 'HOME', home), \
+             patch('builtins.input') as username, \
+             patch.object(provision.getpass, 'getpass') as password, \
+             patch.object(provision, 'op') as op, \
+             patch.object(merge.os, 'chown'), \
+             patch.object(provision, 'run', side_effect=lambda args: local_merge(args)):
+            provision.local_secrets()
+        username.assert_not_called()
+        password.assert_not_called()
+        op.assert_not_called()
+        self.assertEqual(path.read_text(), original)
+
+    def test_local_weak_password_is_rejected_before_writing(self):
+        with patch.object(provision, 'HOME', Path(self.temp.name)), \
+             patch('builtins.input', return_value='saruman'), \
+             patch.object(provision.getpass, 'getpass', return_value='short'), \
+             patch.object(provision, 'merge_credentials') as merge_credentials:
+            with self.assertRaisesRegex(ValueError, 'password'):
+                provision.local_secrets()
+        merge_credentials.assert_not_called()

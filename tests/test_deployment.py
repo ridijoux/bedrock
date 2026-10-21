@@ -53,7 +53,10 @@ HERMES_ROLLBACK_IMAGE=bedrock-hermes:rollback
 ''')
         (scripts / 'install-host.sh').write_text('#!/bin/bash\nexit 0\n')
         (scripts / 'install-host.sh').chmod(0o755)
-        (scripts / 'provision.py').write_text('#!/usr/bin/env python3\n')
+        (scripts / 'provision.py').write_text(
+            'import json, os, pathlib, sys\n'
+            'with (pathlib.Path(os.environ["TEST_ROOT"]) / "calls").open("a") as stream:\n'
+            '    stream.write(json.dumps(["provision", *sys.argv[1:]]) + "\\n")\n')
         bindir = self.root / 'bin'
         bindir.mkdir()
         for command in ('docker', 'systemctl'):
@@ -139,6 +142,9 @@ HERMES_ROLLBACK_IMAGE=bedrock-hermes:rollback
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(unit.exists())
         self.assertFalse(any(call[0] == 'systemctl' for call in self.calls()))
+        self.assertFalse(any(call in (['provision', 'login'], ['provision', 'sync-secrets'])
+                             for call in self.calls()))
+        self.assertIn(['provision', 'local-secrets'], self.calls())
 
     def test_professional_fresh_setup_and_reapply_exclude_gatelet(self):
         self.env['HERMES_INSTANCE'] = 'saruman'

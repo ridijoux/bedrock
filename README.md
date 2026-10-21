@@ -17,7 +17,7 @@ Both use the same checkout at `/opt/hermes-home/git/bedrock`.
 | Dashboard port | 9119 | 9120 |
 | Gatelet admin port (localhost) | 4001 | — |
 | Gatelet data | /opt/hermes-home/data/gatelet | — |
-| 1Password vault / item | Bedrock / Hermes | Bedrock-Pro / Saruman |
+| 1Password vault / item | Bedrock / Hermes | None (local configuration) |
 | Host credentials and deployment state | /etc/bedrock | /etc/bedrock-saruman |
 
 No personal data migration or secret renaming is required. Saruman starts with its own
@@ -25,11 +25,12 @@ empty data directory and setup wizard; personal conversations, memory and provid
 credentials are not copied. Each container has its own 4 GB memory limit;
 size the host for both.
 
-To add Saruman, create a **second Telegram bot** with BotFather, then create the
-**Bedrock-Pro** vault and **Saruman** item with the same fields listed below and
-distinct dashboard credentials. Use a separate 1Password service account with
-read-only access to **Bedrock-Pro only**. During installation, authorize the
-professional model provider account.
+Saruman does not require 1Password. Create a **second Telegram bot** with BotFather.
+The installer asks for a dashboard username and password (at least 16 characters),
+generates a session secret, and saves them in `/opt/hermes-saruman/data/hermes/.env`
+with mode 0600. Reinstallations reuse these local credentials. Configure Telegram
+and authorize the professional model provider account in the Hermes setup wizard.
+Existing local settings are preserved.
 
 From the existing checkout, run as root:
 
@@ -71,11 +72,11 @@ credentials; this is not isolation from a host administrator.
 
 - Debian 13 (amd64 or arm64) with systemd, Git, root access, at least 4 GB RAM, and Docker host connectivity.
 - SSH access to `git@github.com:ridijoux/bedrock.git` from the checkout owner.
-- A Telegram bot, a ChatGPT or Codex subscription, and a 1Password service account with **read access** to the Bedrock vault. No Google Drive or rclone setup is required.
+- A Telegram bot, a ChatGPT or Codex subscription, and, for Gonzabot only, a 1Password service account with **read access** to the Bedrock vault. No Google Drive or rclone setup is required.
 
 ## 1Password configuration
 
-Create a **Bedrock** vault with a **Hermes** item containing:
+For Gonzabot, create a **Bedrock** vault with a **Hermes** item containing:
 
 | Field | Type | Value |
 | --- | --- | --- |

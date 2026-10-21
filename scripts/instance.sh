@@ -14,7 +14,7 @@ case "$HERMES_INSTANCE" in
     export HERMES_HOME=/opt/hermes-saruman
     export BEDROCK_STATE=/etc/bedrock-saruman
     export COMPOSE_PROJECT_NAME=hermes-saruman
-    export HERMES_VAULT=Bedrock-Pro HERMES_ITEM=Saruman
+    unset HERMES_VAULT HERMES_ITEM
     export HERMES_ROLLBACK_IMAGE=bedrock-saruman:rollback
     export HERMES_DASHBOARD_PORT=9120
     unset GATELET_ADMIN_PORT

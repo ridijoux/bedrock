@@ -2,7 +2,11 @@
 source "$(dirname "$0")/common.sh"
 lock
 prepare_data
-python3 scripts/provision.py sync-secrets
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  python3 scripts/provision.py sync-secrets
+else
+  python3 scripts/provision.py local-secrets
+fi
 docker compose config --quiet
 if [[ -f "$BEDROCK_STATE/setup-complete" && -f $HERMES_DATA_DIR/config.yaml ]]; then
   # Reapply an existing deployment without fetching a new image. Compose may
@@ -20,9 +24,17 @@ if [[ $HERMES_INSTANCE == gonzabot ]]; then
   docker compose pull gatelet
   docker compose up -d --wait --wait-timeout 240 gatelet
 fi
-echo 'Select ChatGPT or Codex Subscription in the wizard. Telegram is already provisioned.'
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  echo 'Select ChatGPT or Codex Subscription in the wizard. Telegram is already provisioned.'
+else
+  echo 'Configure your model provider and Telegram in the Hermes setup wizard.'
+fi
 docker compose run --rm --no-deps hermes setup
-python3 scripts/provision.py sync-secrets
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  python3 scripts/provision.py sync-secrets
+else
+  python3 scripts/provision.py local-secrets
+fi
 docker compose up -d --remove-orphans --wait --wait-timeout 240 "${HERMES_SERVICES[@]}"
 install -d -m 0700 "$BEDROCK_STATE"
 touch "$BEDROCK_STATE/setup-complete"
