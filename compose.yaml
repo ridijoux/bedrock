@@ -1,4 +1,4 @@
-name: hermes-home
+name: ${COMPOSE_PROJECT_NAME:-hermes-home}
 
 services:
   hermes:
@@ -11,7 +11,7 @@ services:
       # Keep the current image shim first, then venv and legacy user CLIs.
       PATH: "/opt/hermes/bin:/opt/hermes/.venv/bin:/opt/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"
     ports:
-      - "${HERMES_DASHBOARD_BIND:-0.0.0.0}:9119:9119"
+      - "${HERMES_DASHBOARD_BIND:-0.0.0.0}:${HERMES_DASHBOARD_PORT:-9119}:9119"
     stop_grace_period: 60s
     logging:
       driver: local
@@ -19,7 +19,7 @@ services:
         max-size: "10m"
         max-file: "3"
     volumes:
-      - /opt/hermes-home/data/hermes:/opt/data
+      - ${HERMES_DATA_DIR:-/opt/hermes-home/data/hermes}:/opt/data
       # Debian 13 on both host and container; do not create a directory if
       # the host package is missing. /usr/local/bin is already on PATH.
       - type: bind
@@ -42,9 +42,9 @@ services:
     environment:
       GATELET_DATA_DIR: /data
     ports:
-      - "127.0.0.1:4001:4001" # Admin only; reach remotely with SSH forwarding.
+      - "127.0.0.1:${GATELET_ADMIN_PORT:-4001}:4001" # Admin only; reach remotely with SSH forwarding.
     volumes:
-      - /opt/hermes-home/data/gatelet:/data
+      - ${HERMES_HOME:-/opt/hermes-home}/data/gatelet:/data
     networks:
       - gatelet-agent
       - default # Outbound OAuth/provider API access.

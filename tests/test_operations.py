@@ -54,3 +54,29 @@ class OperationsContracts(unittest.TestCase):
             result = subprocess.run([JUST, 'status'], cwd=root, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), str(root))
+
+    @unittest.skipUnless(JUST, 'just binary not available')
+    def test_explicit_recipes_override_inherited_instance(self):
+        import os
+        assert JUST is not None
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            for file in ('Justfile', 'just/host.just', 'services/hermes/recipes.just',
+                         'services/gatelet/recipes.just'):
+                (root / file).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / file, root / file)
+            script = root / 'scripts/compose.sh'
+            script.parent.mkdir()
+            script.write_text('#!/bin/sh\nprintf "%s %s\\n" "$HERMES_INSTANCE" "$1"\n')
+            script.chmod(0o755)
+            for instance in ('gonzabot', 'saruman'):
+                other = 'saruman' if instance == 'gonzabot' else 'gonzabot'
+                for operation in ('status', 'start', 'stop', 'restart', 'logs',
+                                  'gatelet-start', 'gatelet-stop', 'gatelet-logs'):
+                    with self.subTest(instance=instance, operation=operation):
+                        result = subprocess.run(
+                            [JUST, f'{instance}-{operation}'], cwd=root,
+                            env={**os.environ, 'HERMES_INSTANCE': other},
+                            text=True, capture_output=True)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.stdout.strip(), f'{instance} {operation}')

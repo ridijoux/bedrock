@@ -43,6 +43,9 @@ cd "$TEST_ROOT"
 lock() { :; }
 prepare_data() { mkdir -p "$HERMES_DATA_DIR"; }
 HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
+BEDROCK_STATE="$TEST_ROOT/state"
+HERMES_INSTANCE=${HERMES_INSTANCE:-gonzabot}
+HERMES_ROLLBACK_IMAGE=bedrock-hermes:rollback
 ''')
         (scripts / 'install-host.sh').write_text('#!/bin/bash\nexit 0\n')
         (scripts / 'install-host.sh').chmod(0o755)
@@ -122,3 +125,13 @@ HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
         for command in ('backup-list', 'gatelet-backup-list', 'gatelet-check'):
             with self.subTest(command=command):
                 self.assertNotEqual(self.execute('compose.sh', command).returncode, 0)
+
+
+    def test_professional_install_preserves_personal_legacy_units(self):
+        self.env['HERMES_INSTANCE'] = 'saruman'
+        unit = self.root / 'units/hermes-backup.timer'
+        unit.touch()
+        result = self.execute('install.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(unit.exists())
+        self.assertFalse(any(call[0] == 'systemctl' for call in self.calls()))

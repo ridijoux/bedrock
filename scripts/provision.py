@@ -10,8 +10,10 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
-TOKEN = Path('/etc/bedrock/op-token')
-VAULT = 'Bedrock'
+TOKEN = Path(os.environ.get('BEDROCK_STATE', '/etc/bedrock')) / 'op-token'
+VAULT = os.environ.get('HERMES_VAULT', 'Bedrock')
+ITEM = os.environ.get('HERMES_ITEM', 'Hermes')
+HOME = Path(os.environ.get('HERMES_HOME', '/opt/hermes-home'))
 
 
 def run(args, **kwargs):
@@ -42,19 +44,19 @@ def op(*args):
 
 
 def sync_secrets():
-    item = json.loads(op('item', 'get', 'Hermes', '--vault', VAULT, '--format', 'json'))
+    item = json.loads(op('item', 'get', ITEM, '--vault', VAULT, '--format', 'json'))
     fields = {field.get('label'): field.get('value', '') for field in item.get('fields', [])}
     token = fields.get('TELEGRAM_BOT_TOKEN', '')
     chat = fields.get('TELEGRAM_CHAT_ID', '')
     if not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', token):
-        raise ValueError('Invalid TELEGRAM_BOT_TOKEN in Bedrock/Hermes.')
+        raise ValueError('Invalid TELEGRAM_BOT_TOKEN in the selected instance secret item.')
     if not re.fullmatch(r'[1-9][0-9]*', chat):
         raise ValueError('TELEGRAM_CHAT_ID must be your positive private Telegram user/chat ID.')
     username = fields.get('HERMES_DASHBOARD_BASIC_AUTH_USERNAME', '')
     password = fields.get('HERMES_DASHBOARD_BASIC_AUTH_PASSWORD', '')
     secret = fields.get('HERMES_DASHBOARD_BASIC_AUTH_SECRET', '')
     if not re.fullmatch(r'[A-Za-z0-9_.@-]+', username):
-        raise ValueError('Set HERMES_DASHBOARD_BASIC_AUTH_USERNAME in Bedrock/Hermes.')
+        raise ValueError('Set HERMES_DASHBOARD_BASIC_AUTH_USERNAME in the selected instance secret item.')
     if len(password) < 16 or '\n' in password or '\r' in password:
         raise ValueError('HERMES_DASHBOARD_BASIC_AUTH_PASSWORD must contain at least 16 characters on one line.')
     if len(secret) < 32 or '\n' in secret or '\r' in secret:
@@ -67,7 +69,7 @@ def sync_secrets():
     try:
         with os.fdopen(fd, 'w') as stream:
             stream.write(content)
-        run(['python3', str(ROOT / 'scripts/merge-env.py'), name, '/opt/hermes-home/data/hermes/.env'])
+        run(['python3', str(ROOT / 'scripts/merge-env.py'), name, str(HOME / 'data/hermes/.env')])
     finally:
         os.unlink(name)
     print('Telegram credentials and private user allowlist synchronized.')
@@ -82,7 +84,7 @@ def main():
     action = sys.argv[1]
     if action == 'login':
         if not TOKEN.exists():
-            token = getpass.getpass('1Password service account token (read-only Bedrock): ').strip()
+            token = getpass.getpass(f'1Password service account token (read-only {VAULT}): ').strip()
             if not token:
                 raise ValueError('Empty service account token.')
             atomic(TOKEN, token + '\n')
