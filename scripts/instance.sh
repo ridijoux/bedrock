@@ -16,7 +16,8 @@ case "$HERMES_INSTANCE" in
     export COMPOSE_PROJECT_NAME=hermes-saruman
     export HERMES_VAULT=Bedrock-Pro HERMES_ITEM=Saruman
     export HERMES_ROLLBACK_IMAGE=bedrock-saruman:rollback
-    export HERMES_DASHBOARD_PORT=9120 GATELET_ADMIN_PORT=4002
+    export HERMES_DASHBOARD_PORT=9120
+    unset GATELET_ADMIN_PORT
     ;;
   *) echo 'HERMES_INSTANCE must be gonzabot or saruman.' >&2; return 1 ;;
 esac

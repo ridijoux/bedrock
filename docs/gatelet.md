@@ -1,6 +1,6 @@
 # Gatelet mail access
 
-Bedrock starts [Gatelet](https://github.com/hannesill/gatelet) alongside Hermes. Its image is pinned in `compose.yaml`; changing that pin is an explicit deployment change, not an automatic update. Gatelet is **not** automatically configured with a mailbox or connected to Hermes: OAuth, the per-account policy, and a bearer key require manual setup. Only Gmail and Outlook Mail are supported upstream; an Infomaniak mailbox cannot be connected natively.
+Bedrock starts [Gatelet](https://github.com/hannesill/gatelet) alongside Gonzabot only; Saruman has no Gatelet service. Its image is pinned in `compose.override.yaml`; changing that pin is an explicit deployment change, not an automatic update. Gatelet is **not** automatically configured with a mailbox or connected to Hermes: OAuth, the per-account policy, and a bearer key require manual setup. Only Gmail and Outlook Mail are supported upstream; an Infomaniak mailbox cannot be connected natively.
 
 ## First setup
 

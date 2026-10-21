@@ -61,12 +61,3 @@ saruman-status:
 
 saruman-logs:
     HERMES_INSTANCE=saruman just --justfile {{quote(repo)}}/Justfile logs
-
-saruman-gatelet-start:
-    HERMES_INSTANCE=saruman just --justfile {{quote(repo)}}/Justfile gatelet-start
-
-saruman-gatelet-stop:
-    HERMES_INSTANCE=saruman just --justfile {{quote(repo)}}/Justfile gatelet-stop
-
-saruman-gatelet-logs:
-    HERMES_INSTANCE=saruman just --justfile {{quote(repo)}}/Justfile gatelet-logs

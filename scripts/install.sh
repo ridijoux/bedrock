@@ -32,4 +32,8 @@ prepare_data
 python3 scripts/provision.py login
 ./scripts/setup.sh
 docker compose exec -T hermes gh --version >/dev/null
-echo 'Installation complete: Hermes and Gatelet started; no backups or maintenance jobs are configured.'
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  echo 'Installation complete: Hermes and Gatelet started; no backups or maintenance jobs are configured.'
+else
+  echo 'Installation complete: Saruman started; no backups or maintenance jobs are configured.'
+fi

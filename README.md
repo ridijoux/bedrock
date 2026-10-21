@@ -1,6 +1,6 @@
 # Gonzabot and Saruman — Hermes servers
 
-Hermes on Debian 13, running in Docker and accessed through Telegram and its web dashboard. Gatelet runs in a separate container; review [its setup and security limitations](docs/gatelet.md) before connecting mail.
+Hermes on Debian 13, running in Docker and accessed through Telegram and its web dashboard. Gatelet runs in a separate container for Gonzabot only; review [its setup and security limitations](docs/gatelet.md) before connecting mail.
 
 **No backup, restore, scheduled update, monitoring, health-check or alert facility is provided by Bedrock.** Data in `/opt/hermes-home/data/` is not protected against host loss, accidental deletion, or a failed image migration. Make your own recovery arrangements before reinstalling or changing images. Reapplying this repository disables and removes the legacy `hermes-backup`, `hermes-update`, `hermes-check`, and alert systemd units; it does **not** erase existing local archives, Drive archives, or 1Password recovery documents. It also removes the `20auto-upgrades` APT policy only if it exactly matches the one previously installed by Bedrock. Other independently managed host update services and policies are left alone.
 
@@ -15,8 +15,8 @@ Both use the same checkout at `/opt/hermes-home/git/bedrock`.
 | Docker project | hermes-home | hermes-saruman |
 | State and conversations | /opt/hermes-home/data/hermes | /opt/hermes-saruman/data/hermes |
 | Dashboard port | 9119 | 9120 |
-| Gatelet admin port (localhost) | 4001 | 4002 |
-| Gatelet data | /opt/hermes-home/data/gatelet | /opt/hermes-saruman/data/gatelet |
+| Gatelet admin port (localhost) | 4001 | — |
+| Gatelet data | /opt/hermes-home/data/gatelet | — |
 | 1Password vault / item | Bedrock / Hermes | Bedrock-Pro / Saruman |
 | Host credentials and deployment state | /etc/bedrock | /etc/bedrock-saruman |
 
@@ -43,17 +43,17 @@ Open Saruman at `http://<server LAN address>:9120`. Its optional dashboard bind
 setting belongs in `/opt/hermes-saruman/.env`.
 
 The Justfile provides explicit `gonzabot-*` and `saruman-*` commands for
-`install`, `setup`, `start`, `stop`, `restart`, `status`, `logs`,
-`gatelet-start`, `gatelet-stop` and `gatelet-logs`.
+`install`, `setup`, `start`, `stop`, `restart`, `status` and `logs`.
+The `gatelet-start`, `gatelet-stop` and `gatelet-logs` commands are available only for Gonzabot.
 For example, `just gonzabot-status` checks the personal assistant.
 Explicit commands select their named instance even if `HERMES_INSTANCE` is
 already set in the environment. The original commands remain available.
 
 All instructions below default to Gonzabot. For Saruman, use the explicit recipes
 or prefix installer commands with `HERMES_INSTANCE=saruman` and use the
-professional paths from the table. In the Gatelet guide, use localhost port
-4002 instead of 4001 for Saruman's SSH tunnel and admin access; its container
-still listens on 4001. Each instance has its own Gatelet credentials and policies.
+professional paths from the table. Saruman runs Hermes only, without Gatelet,
+its data directory, or its private network. Reapplying Saruman removes any
+previous Gatelet container from its Docker project; existing Gatelet data is retained.
 
 For direct Docker Compose commands, load the selected environment first as root:
 
@@ -96,9 +96,9 @@ cd /opt/hermes-home/git/bedrock
 bash scripts/install.sh
 ```
 
-The installer installs host dependencies, reads the 1Password item, starts Gatelet and Hermes, and on a fresh installation runs the Hermes setup wizard. Select **ChatGPT or Codex Subscription**; Telegram credentials and the user allowlist are provisioned automatically. It also installs `gh` on the Debian host and bind-mounts `/usr/bin/gh` into Hermes. Authenticate `gh` separately inside Hermes if needed.
+The installer installs host dependencies, reads the 1Password item, starts Hermes (and Gatelet for Gonzabot), and on a fresh installation runs the Hermes setup wizard. Select **ChatGPT or Codex Subscription**; Telegram credentials and the user allowlist are provisioned automatically. It also installs `gh` on the Debian host and bind-mounts `/usr/bin/gh` into Hermes. Authenticate `gh` separately inside Hermes if needed.
 
-Re-running `just install` reapplies the deployment, including Compose changes; it does **not** take a pre-install snapshot or fetch a new Hermes image when an installation already exists. A changed Compose configuration may recreate a container without a backup. Gatelet remains pinned to the image in `compose.yaml`; image changes must be intentional. `just setup` is an alias of `just install`. Existing data remains under `/opt/hermes-home/data/hermes` and `/opt/hermes-home/data/gatelet`.
+Re-running `just install` reapplies the deployment, including Compose changes; it does **not** take a pre-install snapshot or fetch a new Hermes image when an installation already exists. A changed Compose configuration may recreate a container without a backup. Gatelet remains pinned to the image in `compose.override.yaml`; image changes must be intentional. `just setup` is an alias of `just install`. Existing data remains under `/opt/hermes-home/data/hermes` and `/opt/hermes-home/data/gatelet`.
 
 The legacy selected image in `/etc/bedrock/image.env`, if present, remains in effect. Inspect it before reinstalling, particularly if a previous update left the server on `bedrock-hermes:rollback`; no automatic update or rollback service remains. The repository itself is updated explicitly with `git pull --ff-only` by its checkout owner.
 
@@ -117,7 +117,7 @@ just gatelet-stop
 just gatelet-logs
 ```
 
-`just stop` and `just restart` target Hermes only. `just start` starts both existing containers without recreating them. There are **no** `backup`, `restore`, `update`, `check`, `monitor`, or alert commands in this repository. Docker's `restart: unless-stopped` still restarts containers after a crash or host boot, but no Bedrock timer checks whether the application actually works.
+`just stop` and `just restart` target Hermes only. `just start` starts the selected instance’s existing containers without recreating them. There are **no** `backup`, `restore`, `update`, `check`, `monitor`, or alert commands in this repository. Docker's `restart: unless-stopped` still restarts containers after a crash or host boot, but no Bedrock timer checks whether the application actually works.
 
 ## Dashboard and Gatelet
 

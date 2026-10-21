@@ -45,6 +45,10 @@ prepare_data() { mkdir -p "$HERMES_DATA_DIR"; }
 HERMES_DATA_DIR="$TEST_ROOT/data/hermes"
 BEDROCK_STATE="$TEST_ROOT/state"
 HERMES_INSTANCE=${HERMES_INSTANCE:-gonzabot}
+HERMES_SERVICES=(hermes)
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  HERMES_SERVICES=(gatelet hermes)
+fi
 HERMES_ROLLBACK_IMAGE=bedrock-hermes:rollback
 ''')
         (scripts / 'install-host.sh').write_text('#!/bin/bash\nexit 0\n')
@@ -135,3 +139,27 @@ HERMES_ROLLBACK_IMAGE=bedrock-hermes:rollback
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(unit.exists())
         self.assertFalse(any(call[0] == 'systemctl' for call in self.calls()))
+
+    def test_professional_fresh_setup_and_reapply_exclude_gatelet(self):
+        self.env['HERMES_INSTANCE'] = 'saruman'
+        for reapply in (False, True):
+            with self.subTest(reapply=reapply):
+                if reapply:
+                    (self.root / 'data/hermes/config.yaml').write_text('model: configured')
+                result = self.execute('setup.sh')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(any('gatelet' in call for call in self.calls()))
+                self.assertTrue(any('up' in call and '--remove-orphans' in call
+                                    and 'hermes' in call for call in self.calls()))
+
+    def test_professional_start_excludes_gatelet_and_gatelet_commands_fail(self):
+        self.env['HERMES_INSTANCE'] = 'saruman'
+        result = self.execute('compose.sh', 'start')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any('up' in call and 'hermes' in call for call in self.calls()))
+        before = self.calls()
+        for command in ('gatelet-start', 'gatelet-stop', 'gatelet-logs'):
+            result = self.execute('compose.sh', command)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Gatelet is not available for Saruman', result.stderr)
+        self.assertEqual(self.calls(), before)

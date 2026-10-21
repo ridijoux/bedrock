@@ -6,6 +6,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ $EUID -eq 0 ]] || { echo 'Run with sudo (or as root).' >&2; exit 1; }
 source scripts/instance.sh
 export COMPOSE_FILE="$PWD/compose.yaml"
+HERMES_SERVICES=(hermes)
+if [[ $HERMES_INSTANCE == gonzabot ]]; then
+  export COMPOSE_FILE="$COMPOSE_FILE:$PWD/compose.override.yaml"
+  HERMES_SERVICES=(gatelet hermes)
+fi
 # Do not load personal settings into the professional instance.
 if [[ $HERMES_INSTANCE == gonzabot && -f "$PWD/.env" ]]; then
   export COMPOSE_ENV_FILES="$PWD/.env"
@@ -29,5 +34,7 @@ lock() {
 prepare_data() {
   install -d -m 0700 "$HERMES_HOME" "$HERMES_HOME/data"
   install -d -m 0700 -o 10000 -g 10000 "$HERMES_DATA_DIR"
-  install -d -m 0700 "$HERMES_HOME/data/gatelet"
+  if [[ $HERMES_INSTANCE == gonzabot ]]; then
+    install -d -m 0700 "$HERMES_HOME/data/gatelet"
+  fi
 }

@@ -22,7 +22,7 @@ class OperationsContracts(unittest.TestCase):
         self.assertIn('create_host_path: false', hermes)
 
     def test_compose_has_no_healthcheck_or_backup_mount(self):
-        compose = (ROOT / 'compose.yaml').read_text()
+        compose = (ROOT / 'compose.yaml').read_text() + (ROOT / 'compose.override.yaml').read_text()
         self.assertNotIn('healthcheck:', compose)
         self.assertNotIn('bedrock-health.py', compose)
         self.assertNotIn('/backups', compose)
@@ -71,8 +71,10 @@ class OperationsContracts(unittest.TestCase):
             script.chmod(0o755)
             for instance in ('gonzabot', 'saruman'):
                 other = 'saruman' if instance == 'gonzabot' else 'gonzabot'
-                for operation in ('status', 'start', 'stop', 'restart', 'logs',
-                                  'gatelet-start', 'gatelet-stop', 'gatelet-logs'):
+                operations = ['status', 'start', 'stop', 'restart', 'logs']
+                if instance == 'gonzabot':
+                    operations += ['gatelet-start', 'gatelet-stop', 'gatelet-logs']
+                for operation in operations:
                     with self.subTest(instance=instance, operation=operation):
                         result = subprocess.run(
                             [JUST, f'{instance}-{operation}'], cwd=root,
